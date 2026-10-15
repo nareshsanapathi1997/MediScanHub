@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mediscan
+          POSTGRES_PASSWORD: mediscan_dev
+          POSTGRES_DB: mediscan
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mediscan -d mediscan"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://mediscan_app:mediscan_app_dev@127.0.0.1:5432/mediscan_test
+      PRIVILEGED_DATABASE_URL: postgresql://mediscan_admin:mediscan_admin_dev@127.0.0.1:5432/mediscan_test
+      MIGRATION_DATABASE_URL: postgresql://mediscan:mediscan_dev@127.0.0.1:5432/mediscan_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the test database and roles
+        run: |
+          PGPASSWORD=mediscan_dev psql -h 127.0.0.1 -U mediscan -d mediscan -c "CREATE DATABASE mediscan_test OWNER mediscan;"
+          PGPASSWORD=mediscan_dev psql -h 127.0.0.1 -U mediscan -d mediscan_test -f scripts/bootstrap-local.sql
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test

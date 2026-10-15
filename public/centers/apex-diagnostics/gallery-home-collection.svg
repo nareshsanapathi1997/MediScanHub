@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520" fill="none">
+  <rect width="800" height="520" fill="#FFFBEB"/>
+  <rect x="120" y="200" width="360" height="220" rx="16" fill="#FDE68A" opacity=".5"/>
+  <path d="M200 420V280l120-80 120 80v140" stroke="#B45309" stroke-width="4" fill="#FEF3C7"/>
+  <circle cx="560" cy="320" r="80" fill="#0F766E" opacity=".2"/>
+  <rect x="520" y="300" width="160" height="24" rx="6" fill="#0F766E" opacity=".35"/>
+  <text x="120" y="120" fill="#78350F" font-family="system-ui,sans-serif" font-size="22" font-weight="600">Home sample collection fleet</text>
+  <text x="120" y="160" fill="#92400E" font-family="system-ui,sans-serif" font-size="16">Jubilee Hills branch � morning slots</text>
+</svg>
