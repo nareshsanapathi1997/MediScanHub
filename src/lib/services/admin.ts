@@ -1,3 +1,4 @@
+import { istDayKey, istDayStart } from "@/lib/format";
 import type { Prisma, TenantStatus } from "@prisma/client";
 import { prismaPrivileged } from "@/lib/db";
 import { withScope } from "@/lib/scope";
@@ -25,14 +26,13 @@ export async function platformOverview(actor: Actor) {
     prismaPrivileged.supportTicket.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
     prismaPrivileged.notification.groupBy({ by: ["status"], _count: true }),
   ]);
-  const since = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000);
+  const since = istDayStart(new Date(), -13);
   const recent = await prismaPrivileged.booking.findMany({ where: { createdAt: { gte: since } }, select: { createdAt: true, totalPaise: true, status: true } });
+  // Group by India calendar day so the chart matches what operators see on the wall clock.
   const days = Array.from({ length: 14 }, (_, index) => {
-    const day = new Date();
-    day.setUTCDate(day.getUTCDate() - (13 - index));
-    const key = day.toISOString().slice(0, 10);
-    const rows = recent.filter((booking) => booking.createdAt.toISOString().slice(0, 10) === key);
-    return { day: key, bookings: rows.length, revenuePaise: rows.reduce((sum, booking) => sum + booking.totalPaise, 0) };
+    const key = istDayKey(istDayStart(new Date(), -(13 - index)));
+    const rows = recent.filter((booking) => istDayKey(booking.createdAt) === key);
+    return { day: key, bookings: rows.length, revenuePaise: rows.filter((booking) => booking.status !== "CANCELLED" && booking.status !== "REFUNDED").reduce((sum, booking) => sum + booking.totalPaise, 0) };
   });
   const byStatus = await prismaPrivileged.tenant.groupBy({ by: ["status"], _count: true });
   return {
@@ -293,20 +293,59 @@ export async function listStaff(actor: Actor) {
   );
 }
 
+function branchFilterFor(actor: Actor, tenantId: string) {
+  const membership = actor.memberships.find((item) => item.tenantId === tenantId && item.status === "ACTIVE");
+  return membership && membership.branchScope !== "all" ? { branchId: { in: membership.branchScope } } : {};
+}
+
 export async function todayOverview(actor: Actor) {
   const tenantId = actor.activeTenantId;
   if (!tenantId) throw new DomainError("TENANT_REQUIRED", "Choose a center first", 400);
   assertPermission(actor, "tenant.read", tenantId);
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  // Day boundaries follow India time, not the server's clock (a UTC host would otherwise shift "today" by 5.5 hours).
+  const start = istDayStart();
+  const end = istDayStart(new Date(), 1);
+  const branch = branchFilterFor(actor, tenantId);
   return withScope({ tenantId, userId: actor.userId }, async (tx) => {
     const [bookings, pendingReports, collections, revenue] = await Promise.all([
-      tx.booking.count({ where: { tenantId, scheduledAt: { gte: start, lt: end } } }),
-      tx.medicalReport.count({ where: { tenantId, status: { in: ["DRAFT", "ENTERED", "VERIFIED", "APPROVED"] } } }),
-      tx.homeCollectionTask.count({ where: { tenantId, status: { in: ["REQUESTED", "ASSIGNED", "EN_ROUTE"] } } }),
-      tx.payment.aggregate({ where: { tenantId, status: "CAPTURED", createdAt: { gte: start } }, _sum: { amountPaise: true } }),
+      tx.booking.count({ where: { tenantId, ...branch, scheduledAt: { gte: start, lt: end }, status: { notIn: ["CANCELLED"] } } }),
+      tx.medicalReport.count({ where: { tenantId, booking: branch, status: { in: ["DRAFT", "ENTERED", "VERIFIED", "APPROVED"] } } }),
+      tx.homeCollectionTask.count({ where: { tenantId, booking: branch, status: { in: ["REQUESTED", "ASSIGNED", "EN_ROUTE"] } } }),
+      tx.payment.aggregate({ where: { tenantId, invoice: { booking: branch }, status: "CAPTURED", updatedAt: { gte: start, lt: end } }, _sum: { amountPaise: true } }),
     ]);
     return { bookings, pendingReports, collections, capturedPaise: revenue._sum.amountPaise ?? 0 };
+  });
+}
+
+/** Bookings per IST day for the last `days` days plus the report pipeline, for the center dashboard. */
+export async function tenantDashboard(actor: Actor, days = 14) {
+  const tenantId = actor.activeTenantId;
+  if (!tenantId) throw new DomainError("TENANT_REQUIRED", "Choose a center first", 400);
+  assertPermission(actor, "tenant.read", tenantId);
+  const from = istDayStart(new Date(), -(days - 1));
+  const branch = branchFilterFor(actor, tenantId);
+  return withScope({ tenantId, userId: actor.userId }, async (tx) => {
+    const [rows, pipeline, upcoming] = await Promise.all([
+      tx.booking.findMany({ where: { tenantId, ...branch, createdAt: { gte: from } }, select: { createdAt: true, totalPaise: true, status: true } }),
+      tx.medicalReport.groupBy({ by: ["status"], where: { tenantId, booking: branch }, _count: true }),
+      tx.booking.findMany({
+        where: { tenantId, ...branch, scheduledAt: { gte: istDayStart() }, status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"] } },
+        orderBy: { scheduledAt: "asc" },
+        take: 6,
+        select: { id: true, publicCode: true, scheduledAt: true, status: true, visitType: true, patient: { select: { user: { select: { name: true } } } }, branch: { select: { name: true } } },
+      }),
+    ]);
+    const series = new Map<string, { day: string; bookings: number; revenuePaise: number }>();
+    for (let i = 0; i < days; i += 1) {
+      const key = istDayKey(istDayStart(new Date(), -(days - 1 - i)));
+      series.set(key, { day: key, bookings: 0, revenuePaise: 0 });
+    }
+    for (const row of rows) {
+      const entry = series.get(istDayKey(row.createdAt));
+      if (!entry) continue;
+      entry.bookings += 1;
+      if (row.status !== "CANCELLED" && row.status !== "REFUNDED") entry.revenuePaise += row.totalPaise;
+    }
+    return { trend: [...series.values()], pipeline, upcoming };
   });
 }

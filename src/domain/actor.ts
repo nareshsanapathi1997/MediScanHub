@@ -67,8 +67,3 @@ export function homeFor(actor: Actor) {
   if (perms.has("referrals.read")) return "/console/doctor";
   return "/console/patient";
 }
-
-export function requireTenant(actor: Actor) {
-  if (!actor.activeTenantId) throw new DomainError("TENANT_REQUIRED", "Choose a center before continuing", 400);
-  return actor.activeTenantId;
-}

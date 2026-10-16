@@ -2,6 +2,7 @@
 
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { DomainError, errorMessage } from "@/lib/errors";
 import { assertPermission, homeFor } from "@/domain/actor";
@@ -28,9 +29,12 @@ import {
   saveInsurance,
 } from "@/lib/services/patient-extras";
 import { bootstrapSuperAdmin } from "@/lib/services/auth";
+import { removeReportFile, uploadReportFile } from "@/lib/services/report-files";
+import type { ReportFileKind } from "@prisma/client";
 import { registerAbdmLink, sendFhirServiceRequest, sendHl7Order, transmitStudyToPacs } from "@/lib/services/integrations";
 import { assertUpload, putObject } from "@/lib/adapters/storage";
 import { clearSessionCookies, currentSession, requestMeta, setSessionCookies } from "@/server/session";
+import { parseForm } from "@/lib/forms";
 import type { BookingStatus, ReportStatus, SampleStatus, StudyStatus } from "@prisma/client";
 import { PASSWORD_POLICY_MESSAGE, passwordMeetsPolicy } from "@/lib/password-policy";
 import { resolveGeoLabels } from "@/lib/services/geo";
@@ -39,6 +43,8 @@ export type ActionState = {
   error: string;
   devLink?: string | null;
   idle?: boolean;
+  /** Set by go(): the client does a full navigation here (see go). */
+  redirectTo?: string;
   fields?: Record<string, string>;
   code?: string;
   /** When set, the error belongs next to this input name instead of the form banner. */
@@ -58,6 +64,15 @@ function pickFields(form: FormData, keys: string[], skip = new Set(["password"])
     fields[key] = String(form.get(key) ?? "");
   }
   return fields;
+}
+
+/**
+ * Hand navigation to the browser. A server-action redirect() to a heavy page can leave the
+ * client router waiting forever in the production build (Next 15.5), so form actions return
+ * the target and SchemaForm/FormBox do a full navigation.
+ */
+function go(redirectTo: string): ActionState {
+  return { error: "", redirectTo };
 }
 
 function formError(error: unknown, form?: FormData, keys?: string[]): ActionState {
@@ -80,14 +95,39 @@ async function actorOrThrow() {
   return session;
 }
 
+
+/**
+ * Run a plain form action and send the user back to the page they came from with a flash message,
+ * so a domain error (missing reason, wrong state, permission) shows as a toast instead of the error page.
+ */
+async function guarded(run: () => Promise<void>, success: string) {
+  let flash: { kind: "error" | "ok"; message: string };
+  try {
+    await run();
+    flash = { kind: "ok", message: success };
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    flash = { kind: "error", message: error instanceof DomainError ? error.message : errorMessage(error) };
+  }
+  // Leave the outcome in a short-lived cookie that FlashToast shows after ActionForm reloads.
+  // No revalidatePath: the response then carries no RSC tree. (A redirect from a server action can stall the client router in Next 15.5.)
+  (await cookies()).set("ms_flash", JSON.stringify({ ...flash, message: flash.message.slice(0, 300), id: randomToken(6) }), {
+    path: "/",
+    maxAge: 60,
+    sameSite: "lax",
+    httpOnly: false,
+  });
+}
+
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
 export async function loginAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
+    const input = parseForm("login", form);
     const meta = await requestMeta();
-    const result = await login({ email: text(form, "email"), password: String(form.get("password") ?? ""), ip: meta.ip, userAgent: meta.userAgent });
+    const result = await login({ email: input.email, password: input.password, ip: meta.ip, userAgent: meta.userAgent });
     await setSessionCookies(result.token, result.csrf);
-    const next = text(form, "next");
+    const next = input.next ?? "";
     redirect(next.startsWith("/") && !next.startsWith("//") ? next : homeFor(result.actor));
   } catch (error) {
     return formError(error, form, ["email"]);
@@ -135,7 +175,7 @@ export async function registerAction(_prev: ActionState, form: FormData): Promis
     });
     const result = await login({ email: text(form, "email"), password: String(form.get("password") ?? ""), ip: meta.ip, userAgent: meta.userAgent });
     await setSessionCookies(result.token, result.csrf);
-    redirect("/console/patient");
+    return go("/console/patient");
   } catch (error) {
     return formError(error, form, [...REGISTER_FIELDS]);
   }
@@ -143,7 +183,7 @@ export async function registerAction(_prev: ActionState, form: FormData): Promis
 
 export async function forgotAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
-    const result = await requestPasswordReset(text(form, "email"));
+    const result = await requestPasswordReset(parseForm("forgot", form).email);
     await processNotificationQueue(10);
     return { error: "", devLink: result.devLink };
   } catch (error) {
@@ -153,8 +193,9 @@ export async function forgotAction(_prev: ActionState, form: FormData): Promise<
 
 export async function recoverAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
-    await resetPassword(text(form, "token"), String(form.get("password") ?? ""));
-    redirect("/login?reset=1");
+    const input = parseForm("recover", form);
+    await resetPassword(input.token, input.password);
+    return go("/login?reset=1");
   } catch (error) {
     return formError(error);
   }
@@ -188,7 +229,7 @@ export async function centerRegisterAction(_prev: ActionState, form: FormData): 
     });
     const result = await login({ email: text(form, "email"), password: String(form.get("password") ?? ""), ip: meta.ip, userAgent: meta.userAgent });
     await setSessionCookies(result.token, result.csrf);
-    redirect(`/console/org/verification?registered=${created.slug}`);
+    return go(`/console/org/verification?registered=${created.slug}`);
   } catch (error) {
     return formError(error, form, [...CENTER_REGISTER_FIELDS]);
   }
@@ -197,6 +238,7 @@ export async function centerRegisterAction(_prev: ActionState, form: FormData): 
 export async function contactAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
     const session = await currentSession();
+    if (!session) parseForm("contact", form);
     if (session) {
       await createTicket(session.actor, { subject: text(form, "subject"), body: text(form, "body") });
     } else {
@@ -212,7 +254,7 @@ export async function contactAction(_prev: ActionState, form: FormData): Promise
 export async function checkoutAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
     const session = await actorOrThrow();
-    if (!form.get("consent")) throw new DomainError("CONSENT", "Consent is required before a booking is created", 400);
+    if (!form.get("consent")) throw new DomainError("CONSENT", "Please tick the consent box to continue", 400);
     let prescriptionStorageKey: string | undefined;
     let prescriptionFileName: string | undefined;
     const file = form.get("prescription");
@@ -243,7 +285,7 @@ export async function checkoutAction(_prev: ActionState, form: FormData): Promis
       tpaReference: text(form, "tpaReference"),
     });
     await processNotificationQueue(20);
-    redirect(`/bookings/${result.bookingId}`);
+    return go(`/bookings/${result.bookingId}`);
   } catch (error) {
     return formError(error);
   }
@@ -263,25 +305,30 @@ export async function payAction(_prev: ActionState, form: FormData): Promise<Act
     }
     await verifyCheckoutPayment(session.actor, { orderId: order.orderId, paymentId, signature });
     await processNotificationQueue(20);
-    revalidatePath(`/bookings/${bookingId}`);
-    redirect(`/bookings/${bookingId}?paid=1`);
+    // No revalidatePath here: it would re-render the page and unmount the pay form before the
+    // browser follows redirectTo. The full navigation loads fresh data anyway.
+    return go(`/bookings/${bookingId}?paid=1`);
   } catch (error) {
     return formError(error);
   }
 }
 
 export async function bookingTransitionAction(form: FormData) {
-  const session = await actorOrThrow();
-  await transitionBooking(session.actor, text(form, "bookingId"), text(form, "to") as BookingStatus, text(form, "reason"));
-  await processNotificationQueue(10);
-  revalidatePath("/console");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await transitionBooking(session.actor, text(form, "bookingId"), text(form, "to") as BookingStatus, text(form, "reason"));
+    await processNotificationQueue(10);
+    revalidatePath("/console");
+  }, "Booking updated.");
 }
 
 export async function rescheduleAction(form: FormData) {
-  const session = await actorOrThrow();
-  await rescheduleBooking(session.actor, text(form, "bookingId"), text(form, "slotId"));
-  await processNotificationQueue(10);
-  revalidatePath("/console");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await rescheduleBooking(session.actor, text(form, "bookingId"), text(form, "slotId"));
+    await processNotificationQueue(10);
+    revalidatePath("/console");
+  }, "Visit rescheduled.");
 }
 
 export async function walkInAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -304,27 +351,31 @@ export async function walkInAction(_prev: ActionState, form: FormData): Promise<
         name: text(form, "name"),
         email: text(form, "email"),
         phone: text(form, "phone"),
-        dateOfBirth: new Date(text(form, "dateOfBirth")),
+        dateOfBirth: new Date(`${text(form, "dateOfBirth")}T00:00:00Z`),
         sex: text(form, "sex") as "FEMALE" | "MALE",
       },
     });
     await processNotificationQueue(10);
-    redirect(`/console/org/bookings/${result.bookingId}`);
+    return go(`/console/org/bookings/${result.bookingId}`);
   } catch (error) {
     return formError(error);
   }
 }
 
 export async function sampleAction(form: FormData) {
-  const session = await actorOrThrow();
-  await transitionSample(session.actor, text(form, "sampleId"), text(form, "to") as SampleStatus, text(form, "reason"));
-  revalidatePath("/console/lab");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await transitionSample(session.actor, text(form, "sampleId"), text(form, "to") as SampleStatus, text(form, "reason"));
+    revalidatePath("/console/lab");
+  }, "Sample updated.");
 }
 
 export async function assignSampleAction(form: FormData) {
-  const session = await actorOrThrow();
-  await assignSampleTechnician(session.actor, text(form, "sampleId"), text(form, "assigneeId"));
-  revalidatePath("/console/lab");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await assignSampleTechnician(session.actor, text(form, "sampleId"), text(form, "assigneeId"));
+    revalidatePath("/console/lab");
+  }, "Technician assigned.");
 }
 
 export async function resultsAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -344,11 +395,35 @@ export async function resultsAction(_prev: ActionState, form: FormData): Promise
   }
 }
 
+export async function uploadReportFileAction(form: FormData) {
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) throw new DomainError("UPLOAD", "Choose a file to upload.", 400);
+    await uploadReportFile(session.actor, {
+      reportId: text(form, "reportId"),
+      kind: (text(form, "kind") || "OTHER") as ReportFileKind,
+      bookingItemId: text(form, "bookingItemId") || null,
+      fileName: file.name,
+      bytes: Buffer.from(await file.arrayBuffer()),
+    });
+  }, "File uploaded. The patient will see it after the report is released.");
+}
+
+export async function removeReportFileAction(form: FormData) {
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await removeReportFile(session.actor, text(form, "fileId"));
+  }, "File removed.");
+}
+
 export async function reportAction(form: FormData) {
-  const session = await actorOrThrow();
-  await transitionReport(session.actor, text(form, "reportId"), text(form, "to") as ReportStatus, text(form, "comment"));
-  await processNotificationQueue(10);
-  revalidatePath("/console/lab");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await transitionReport(session.actor, text(form, "reportId"), text(form, "to") as ReportStatus, text(form, "comment"));
+    await processNotificationQueue(10);
+    revalidatePath("/console/lab");
+  }, "Report updated.");
 }
 
 export async function inviteAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -401,9 +476,11 @@ export async function branchAction(_prev: ActionState, form: FormData): Promise<
 }
 
 export async function hoursAction(form: FormData) {
-  const session = await actorOrThrow();
-  await updateBranch(session.actor, text(form, "branchId"), { opensAt: text(form, "opensAt"), closesAt: text(form, "closesAt"), homeCollection: form.get("homeCollection") === "on" });
-  revalidatePath("/console/org/branches");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await updateBranch(session.actor, text(form, "branchId"), { opensAt: text(form, "opensAt"), closesAt: text(form, "closesAt"), homeCollection: form.get("homeCollection") === "on" });
+    revalidatePath("/console/org/branches");
+  }, "Branch hours saved.");
 }
 
 export async function slotAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -481,28 +558,36 @@ export async function packageAction(_prev: ActionState, form: FormData): Promise
 }
 
 export async function planAction(form: FormData) {
-  const session = await actorOrThrow();
-  await changePlan(session.actor, text(form, "tier"), text(form, "cycle") as "MONTHLY" | "ANNUAL");
-  revalidatePath("/console/org/subscription");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await changePlan(session.actor, text(form, "tier"), text(form, "cycle") as "MONTHLY" | "ANNUAL");
+    revalidatePath("/console/org/subscription");
+  }, "Plan updated.");
 }
 
 export async function cancelPlanAction() {
-  const session = await actorOrThrow();
-  await cancelSubscription(session.actor);
-  revalidatePath("/console/org/subscription");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await cancelSubscription(session.actor);
+    revalidatePath("/console/org/subscription");
+  }, "Subscription cancelled.");
 }
 
 export async function decisionAction(form: FormData) {
-  const session = await actorOrThrow();
-  await decideTenant(session.actor, text(form, "tenantId"), text(form, "decision") as "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE", text(form, "notes"));
-  await processNotificationQueue(5);
-  revalidatePath("/console/admin");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await decideTenant(session.actor, text(form, "tenantId"), text(form, "decision") as "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE", text(form, "notes"));
+    await processNotificationQueue(5);
+    revalidatePath("/console/admin");
+  }, "Decision recorded.");
 }
 
 export async function userStatusAction(form: FormData) {
-  const session = await actorOrThrow();
-  await setUserStatus(session.actor, text(form, "userId"), text(form, "status") as "ACTIVE" | "SUSPENDED" | "DISABLED");
-  revalidatePath("/console/admin/users");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await setUserStatus(session.actor, text(form, "userId"), text(form, "status") as "ACTIVE" | "SUSPENDED" | "DISABLED");
+    revalidatePath("/console/admin/users");
+  }, "User status updated.");
 }
 
 export async function ticketAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -532,10 +617,12 @@ export async function refundAction(_prev: ActionState, form: FormData): Promise<
 }
 
 export async function manualPayAction(form: FormData) {
-  const session = await actorOrThrow();
-  await recordManualPayment(session.actor, text(form, "invoiceId"), text(form, "reason") || "Desk collection");
-  await processNotificationQueue(10);
-  revalidatePath("/console/finance");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await recordManualPayment(session.actor, text(form, "invoiceId"), text(form, "reason") || "Desk collection");
+    await processNotificationQueue(10);
+    revalidatePath("/console/finance");
+  }, "Payment recorded.");
 }
 
 export async function walletRedeemAction(form: FormData) {
@@ -566,23 +653,29 @@ export async function tpaClaimAction(form: FormData) {
 }
 
 export async function collectorAction(form: FormData) {
-  const session = await actorOrThrow();
-  await assignCollector(session.actor, text(form, "bookingId"), text(form, "assigneeId"));
-  await processNotificationQueue(5);
-  revalidatePath("/console/org/collections");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await assignCollector(session.actor, text(form, "bookingId"), text(form, "assigneeId"));
+    await processNotificationQueue(5);
+    revalidatePath("/console/org/collections");
+  }, "Collector assigned.");
 }
 
 export async function collectionAction(form: FormData) {
-  const session = await actorOrThrow();
-  await transitionCollection(session.actor, text(form, "bookingId"), text(form, "to") as "EN_ROUTE" | "COLLECTED" | "FAILED");
-  revalidatePath("/console/lab");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    await transitionCollection(session.actor, text(form, "bookingId"), text(form, "to") as "EN_ROUTE" | "COLLECTED" | "FAILED");
+    revalidatePath("/console/lab");
+  }, "Collection updated.");
 }
 
 export async function imagingAction(form: FormData) {
-  const session = await actorOrThrow();
-  if (text(form, "mode") === "checkin") await checkInImaging(session.actor, text(form, "orderId"));
-  else await transitionStudy(session.actor, text(form, "studyId"), text(form, "to") as StudyStatus);
-  revalidatePath("/console/imaging");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    if (text(form, "mode") === "checkin") await checkInImaging(session.actor, text(form, "orderId"));
+    else await transitionStudy(session.actor, text(form, "studyId"), text(form, "to") as StudyStatus);
+    revalidatePath("/console/imaging");
+  }, "Imaging updated.");
 }
 
 export async function equipmentAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -663,11 +756,13 @@ export async function scheduleEquipmentAction(_prev: ActionState, form: FormData
 }
 
 export async function revokeListedSessionAction(form: FormData) {
-  const session = await actorOrThrow();
-  const sessionId = text(form, "sessionId");
-  if (sessionId === session.sessionId) throw new DomainError("SESSION", "Use sign out to end the current session", 400);
-  await revokeSession(sessionId, session.actor.userId);
-  revalidatePath("/console/account");
+  await guarded(async () => {
+    const session = await actorOrThrow();
+    const sessionId = text(form, "sessionId");
+    if (sessionId === session.sessionId) throw new DomainError("SESSION", "Use sign out to end the current session", 400);
+    await revokeSession(sessionId, session.actor.userId);
+    revalidatePath("/console/account");
+  }, "Session signed out.");
 }
 
 export async function tenantProfileAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -812,10 +907,4 @@ export async function integrationAction(form: FormData) {
   if (mode === "fhir") await sendFhirServiceRequest(session.actor, text(form, "bookingId"));
   if (mode === "abdm") await registerAbdmLink(session.actor, text(form, "patientId"));
   revalidatePath("/console/org/integrations");
-}
-
-export async function cronWorkerAction() {
-  await processNotificationQueue(50);
-  await enqueueBookingReminders();
-  await refreshSubscriptionStates();
 }

@@ -41,8 +41,8 @@ async function FinanceBody() {
   const canCollect = hasPermission(actor, "invoices.manage", actor.activeTenantId);
   return (
     <>
-      <PageHeader eyebrow="Finance" title="Invoices, wallet, and TPA" description="Apply wallet balance, record desk payments, submit TPA claims, and issue refunds." />
-      {typed.length === 0 ? <EmptyState title="No invoices" body="A booking creates an invoice when the visit is saved." /> : (
+      <PageHeader eyebrow="Finance" title="Payments and bills" description="Record cash or UPI payments at the desk, apply wallet money, send insurance (TPA) claims and give refunds." />
+      {typed.length === 0 ? <EmptyState title="No bills yet" body="A booking creates an invoice when the visit is saved." /> : (
         <InvoiceTable rows={typed.map((invoice) => ({
           number: invoice.number,
           patient: invoice.patient?.user.name ?? "Center",

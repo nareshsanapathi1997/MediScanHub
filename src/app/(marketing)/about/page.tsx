@@ -5,11 +5,12 @@ export const metadata = { title: "About" };
 export default function AboutPage() {
   return (
     <main className="mx-auto grid max-w-3xl gap-6 px-4 py-10">
-      <PageHeader eyebrow="About" title="One marketplace, many centers" description="MediScan Hub runs a public directory and a private desk for each diagnostic organization. A center can point its own hostname at the same application." />
+      <PageHeader eyebrow="About" title="About MediScan Hub" description="MediScan Hub helps you find a good diagnostic center, book a test or scan, and get your report on your phone." />
       <div className="grid gap-4 text-sm leading-6">
-        <p>Patients search tests, hold a slot, and pay. Staff at the assigned branch collect samples, enter values, and release a report only after a person with approval rights signs it. Numbers are flagged against configured reference ranges. The product does not diagnose.</p>
-        <p>Each organization is a tenant. Branches, prices, samples, and reports stay inside that tenant. Postgres row-level security is a second lock behind the application checks. A request cannot choose another center by sending a tenant id.</p>
-        <p>The demonstration database is labeled synthetic. It is not a clinical record of any real person. Indian DPDP, ABDM, and clinical establishment rules need a legal review before a production launch. This software does not claim those certifications.</p>
+        <p>You can search for a test like CBC, LFT, KFT, thyroid profile or HbA1c, or a scan like X-ray, ultrasound, CT or MRI. Choose a center near you, pick a time and pay online. Many centers also send a phlebotomist to your home to collect the sample.</p>
+        <p>At the center, trained staff collect and test your sample. A pathologist or radiologist checks every report before you can see it. Your report shows your values and the normal range. It is not a diagnosis, so please show it to your doctor.</p>
+        <p>Your reports are private. Only you and the staff of the center that did your test can open them. Other centers cannot see your records.</p>
+        <p>This is a demo. All patients, centers and reports here are synthetic (made up) and are marked “Synth”. Before real use, the operator must complete legal checks under the DPDP Act, ABDM and the Clinical Establishments rules.</p>
       </div>
     </main>
   );

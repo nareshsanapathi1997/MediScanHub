@@ -34,8 +34,11 @@ export function FormBox({
   encType?: "multipart/form-data";
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "", idle: true });
-  const done = !pending && !state.error && !state.idle;
+  const done = !pending && !state.error && !state.idle && !state.redirectTo;
   const bannerError = state.error && !state.field ? state.error : "";
+  useEffect(() => {
+    if (state.redirectTo) window.location.assign(state.redirectTo);
+  }, [state.redirectTo]);
   useEffect(() => {
     if (done) toast.success(success);
   }, [done, success]);

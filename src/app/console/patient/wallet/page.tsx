@@ -20,9 +20,9 @@ async function WalletBody() {
   const { wallet, transactions } = await getWallet(actor);
   return (
     <>
-      <PageHeader eyebrow="Loyalty" title="Care wallet" description="Earn 1% back on captured online payments. Redeem at checkout or ask finance to apply balance to an open invoice." />
+      <PageHeader eyebrow="Wallet" title="My wallet" description="Get 1% back on every online payment. Use the money on your next booking at checkout." />
       <p className="rounded-2xl border bg-card p-4 text-2xl font-display">{formatInr(wallet.balancePaise)} available</p>
-      {transactions.length === 0 ? <EmptyState title="No activity" body="Wallet credits appear after you pay for a booking online." /> : (
+      {transactions.length === 0 ? <EmptyState title="No wallet activity yet" body="Wallet credits appear after you pay for a booking online." /> : (
         <ul className="grid gap-2 text-sm">
           {transactions.map((tx) => (
             <li key={tx.id} className="flex justify-between rounded-xl border px-3 py-2">

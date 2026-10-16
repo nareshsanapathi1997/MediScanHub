@@ -28,7 +28,7 @@ async function ScheduleBody() {
   );
   return (
     <>
-      <PageHeader eyebrow="Calendar" title="Open slots" description="Times are interpreted as Asia/Kolkata. Capacity is enforced in the database so two patients cannot take the last seat." />
+      <PageHeader eyebrow="Calendar" title="Time slots" description="All times are in IST. When a slot is full, no more patients can book it." />
       <div className="grid gap-2 text-sm">
         {slots.length === 0 ? <p className="text-muted-foreground">No future slots.</p> : slots.map((slot) => (
           <p key={slot.id}>{slot.branch.name} · {slot.kind} · {formatWhen(slot.startsAt)} · {slot.bookedCount}/{slot.capacity}</p>

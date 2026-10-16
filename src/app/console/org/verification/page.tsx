@@ -24,7 +24,7 @@ async function VerifyBody({ registered }: { registered?: string }) {
   const docs = await prismaPrivileged.centerVerification.findMany({ where: { tenantId: actor.activeTenantId! }, orderBy: { createdAt: "desc" } });
   return (
     <>
-      <PageHeader eyebrow="Trust" title="Verification documents" description="Upload a PDF, PNG, or JPEG up to 5 MB. The file type is checked from its contents, not the browser label." />
+      <PageHeader eyebrow="Trust" title="Center documents" description="Upload your registration certificate, NABL certificate and GST certificate. PDF, JPG or PNG up to 5 MB each." />
       {registered ? <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm">Application {registered} is pending review. Add your registration certificate here.</p> : null}
       {docs.map((doc) => (
         <p key={doc.id} className="flex items-center justify-between gap-2 text-sm">

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireSession } from "@/server/session";
 import { getBooking } from "@/lib/services/booking";
 import { listSlots } from "@/lib/services/catalog";
+import { listBookingReports } from "@/lib/services/report-files";
 import { BookingView } from "@/components/booking-view";
 import { DomainError } from "@/lib/errors";
 import { Gate } from "@/components/guard";
@@ -28,6 +29,7 @@ async function BookingBody({ id, day }: { id: string; day?: string }) {
     return (
       <>
         <BookingView
+          reports={await listBookingReports(actor, booking)}
           booking={booking}
           actor={actor}
           slots={slots}

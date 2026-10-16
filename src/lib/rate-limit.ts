@@ -4,7 +4,7 @@ type Bucket = { timestamps: number[] };
 
 const buckets = new Map<string, Bucket>();
 
-export function rateLimit(key: string, limit: number, windowMs: number) {
+function rateLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
   const bucket = buckets.get(key) ?? { timestamps: [] };
   bucket.timestamps = bucket.timestamps.filter((stamp) => now - stamp < windowMs);
@@ -25,8 +25,4 @@ export async function rateLimitShared(key: string, limit: number, windowMs: numb
   await prismaPrivileged.rateLimitHit.create({ data: { bucketKey: key } });
   await prismaPrivileged.rateLimitHit.deleteMany({ where: { hitAt: { lt: since } } });
   return { ok: true as const };
-}
-
-export function resetRateLimits() {
-  buckets.clear();
 }

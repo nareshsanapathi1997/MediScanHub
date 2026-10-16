@@ -21,23 +21,23 @@ export function renderTemplate(templateKey: string, payload: Record<string, stri
   const when = payload.when ?? "the scheduled time";
   switch (templateKey) {
     case "booking_confirmed":
-      return { subject: `Booking ${code} confirmed`, text: `Your visit at ${center} is confirmed for ${when}. Manage it securely: ${link}` };
+      return { subject: `Booking ${code} confirmed`, text: `Your visit at ${center} is confirmed for ${when}. Please carry a photo ID. View or change your booking: ${link}` };
     case "booking_reminder":
-      return { subject: `Reminder for ${code}`, text: `Reminder: ${code} at ${center} is scheduled for ${when}. ${link}` };
+      return { subject: `Reminder: visit ${code}`, text: `Reminder: your visit ${code} at ${center} is on ${when}. Follow any fasting advice given for your test. ${link}` };
     case "booking_cancelled":
-      return { subject: `Booking ${code} cancelled`, text: `${code} at ${center} was cancelled. ${link}` };
+      return { subject: `Booking ${code} cancelled`, text: `Your booking ${code} at ${center} is cancelled. If you paid online, the refund goes back to the same account. ${link}` };
     case "booking_rescheduled":
-      return { subject: `Booking ${code} rescheduled`, text: `${code} at ${center} is now scheduled for ${when}. ${link}` };
+      return { subject: `Booking ${code} moved`, text: `Your booking ${code} at ${center} is now on ${when}. ${link}` };
     case "home_collection":
-      return { subject: `Home collection for ${code}`, text: `Home collection for ${code} at ${center} is planned for ${payload.window ?? when}. ${link}` };
+      return { subject: `Home sample collection for ${code}`, text: `Our staff from ${center} will visit you for ${code} at ${payload.window ?? when}. ${link}` };
     case "report_ready":
-      return { subject: `Report ready for ${code}`, text: `A report for ${code} is ready. Sign in to open it. Results are not included in this message. ${link}` };
+      return { subject: `Your report for ${code} is ready`, text: `Your report for ${code} from ${center} is ready. Sign in to view and download it. For your privacy, results are not sent in this message. ${link}` };
     case "subscription_reminder":
-      return { subject: `Subscription reminder for ${center}`, text: `${payload.planName ?? "Your subscription"} for ${center} needs attention. ${link}` };
+      return { subject: `Plan reminder for ${center}`, text: `${payload.planName ?? "Your plan"} for ${center} needs attention. ${link}` };
     case "password_reset":
-      return { subject: "Reset your MediScan Hub password", text: `Reset your password using this secure link: ${link}` };
+      return { subject: "Reset your MediScan Hub password", text: `Reset your password with this secure link. It works once and expires soon: ${link}` };
     case "invitation":
-      return { subject: `Invitation to ${center}`, text: `${payload.recipientName ?? "You"} are invited to ${center}. Accept: ${link}` };
+      return { subject: `You are invited to join ${center}`, text: `${payload.recipientName ?? "Hello"}, you are invited to join ${center} on MediScan Hub. Accept here: ${link}` };
     default:
       throw new DomainError("NOTIFICATION", "Unknown notification template", 400);
   }
@@ -123,14 +123,6 @@ export async function processNotificationQueue(limit = 25) {
   return { processed: due.length, sent, failed, provider: getEnv().NOTIFICATION_PROVIDER };
 }
 
-export async function enqueueAndPump(db: Db, input: Parameters<typeof enqueue>[1]) {
-  const row = await enqueue(db, input);
-  if (getEnv().NODE_ENV !== "test") {
-    await processNotificationQueue(20).catch(() => undefined);
-  }
-  return row;
-}
-
 export async function enqueueBookingReminders() {
   const start = new Date();
   const end = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -163,16 +155,7 @@ export async function enqueueBookingReminders() {
   return created;
 }
 
-export async function listNotifications(tenantId: string | null, take = 50) {
-  return prismaPrivileged.notification.findMany({
-    where: tenantId ? { tenantId } : {},
-    orderBy: { createdAt: "desc" },
-    take,
-    include: { deliveries: { orderBy: { attempt: "desc" }, take: 3 } },
-  });
-}
-
-export function asPayload(value: Prisma.JsonValue | null): Record<string, string> {
+function asPayload(value: Prisma.JsonValue | null): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, String(item)]));
 }

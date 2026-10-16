@@ -8,8 +8,8 @@ export const metadata = { title: "Forgot password" };
 export default function ForgotPage() {
   return (
     <main className="mx-auto grid max-w-md gap-6 px-4 py-10">
-      <PageHeader eyebrow="Recovery" title="Reset a password" description="If the email matches an account, a reset link is queued. The response is the same either way. In local development the link is shown here because no mail provider is configured." />
-      <FormBox action={forgotAction} submit="Send reset link" success="If that email is registered, a reset link is on its way.">
+      <PageHeader eyebrow="Recovery" title="Forgot password" description="Enter the email you used to register. We will send you a link to set a new password. On this demo the link is shown on this page." />
+      <FormBox action={forgotAction} submit="Send reset link" success="If this email is registered, we have sent a reset link. Please check your inbox and spam folder.">
         <label className="field">Email<StickyInput name="email" type="email" required autoComplete="email" /></label>
       </FormBox>
     </main>

@@ -9,22 +9,22 @@ export type ReportLink = { reportId: string; version: number; exp: number };
 
 const ALLOWED = new Set(["application/pdf", "image/png", "image/jpeg"]);
 
-export function sniffUpload(bytes: Buffer): "pdf" | "png" | "jpeg" | null {
+function sniffUpload(bytes: Buffer): "pdf" | "png" | "jpeg" | null {
   if (bytes.subarray(0, 4).toString("utf8") === "%PDF") return "pdf";
   if (bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
   if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
   return null;
 }
 
-export function assertUpload(bytes: Buffer, claimedName: string) {
-  if (bytes.length === 0 || bytes.length > 5 * 1024 * 1024) {
-    throw new DomainError("UPLOAD", "File must be between 1 byte and 5 MB", 400);
+export function assertUpload(bytes: Buffer, claimedName: string, maxMb = 5) {
+  if (bytes.length === 0 || bytes.length > maxMb * 1024 * 1024) {
+    throw new DomainError("UPLOAD", bytes.length === 0 ? "The file is empty. Choose the file again." : `The file is too large. The limit is ${maxMb} MB.`, 400);
   }
   const kind = sniffUpload(bytes);
-  if (!kind) throw new DomainError("UPLOAD", "Only PDF, PNG, and JPEG files are accepted", 400);
+  if (!kind) throw new DomainError("UPLOAD", "Only PDF, PNG and JPEG files are accepted.", 400);
   const ext = path.extname(claimedName).toLowerCase();
   const expected = kind === "jpeg" ? [".jpg", ".jpeg"] : [`.${kind}`];
-  if (ext && !expected.includes(ext)) throw new DomainError("UPLOAD", "File extension does not match its contents", 400);
+  if (ext && !expected.includes(ext)) throw new DomainError("UPLOAD", "The file name does not match the file type. Rename it or export it again.", 400);
   const contentType = kind === "pdf" ? "application/pdf" : kind === "png" ? "image/png" : "image/jpeg";
   if (!ALLOWED.has(contentType)) throw new DomainError("UPLOAD", "Unsupported file", 400);
   return { kind, contentType };
@@ -83,6 +83,22 @@ export function signReportLink(reportId: string, version: number, ttlSeconds = 3
 export function readReportLink(token: string): ReportLink {
   const payload = readSignedPayload<ReportLink>(getEnv().FILE_SIGNING_SECRET, token);
   if (!payload || payload.exp < Date.now() || !payload.reportId) {
+    throw new DomainError("LINK_EXPIRED", "This file link is invalid or has expired", 401);
+  }
+  return payload;
+}
+
+export type FileLink = { fileId: string; exp: number };
+
+/** Short-lived signed link for an uploaded report file. The download route still checks the session. */
+export function signFileLink(fileId: string, ttlSeconds = 300) {
+  const payload: FileLink = { fileId, exp: Date.now() + ttlSeconds * 1000 };
+  return signPayload(getEnv().FILE_SIGNING_SECRET, payload);
+}
+
+export function readFileLink(token: string): FileLink {
+  const payload = readSignedPayload<FileLink>(getEnv().FILE_SIGNING_SECRET, token);
+  if (!payload || payload.exp < Date.now() || !payload.fileId) {
     throw new DomainError("LINK_EXPIRED", "This file link is invalid or has expired", 401);
   }
   return payload;

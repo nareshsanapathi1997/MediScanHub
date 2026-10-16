@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireSession } from "@/server/session";
 import { listBookings } from "@/lib/services/booking";
-import { formatInr, formatWhen } from "@/lib/format";
+import { formatInr, formatWhen, titleCase } from "@/lib/format";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Gate, NeedTenant } from "@/components/guard";
 import { PageHeader, EmptyState } from "@/components/widgets";
 import { BookingTable } from "@/components/record-tables";
@@ -37,20 +38,20 @@ async function BookingsBody({ query }: { query: { status?: string; q?: string; f
   const pages = Math.max(1, Math.ceil(result.total / result.pageSize));
   return (
     <>
-      <PageHeader eyebrow="Visits" title="Bookings" description={`${result.total} in this filter. Branch staff only see their assigned branches.`} />
-      <form className="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-4">
-        <label className="field">Code or patient<input name="q" defaultValue={query.q} /></label>
+      <PageHeader eyebrow="Visits" title="Bookings" description={`${result.total} booking${result.total === 1 ? "" : "s"} found. Branch staff see only their own branches.`} />
+      <form className="surface grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_auto] lg:items-end" aria-label="Filter bookings">
+        <label className="field">Booking code, patient name or mobile<input name="q" defaultValue={query.q} /></label>
         <label className="field">Status
           <select name="status" defaultValue={query.status ?? ""}>
             <option value="">Any</option>
-            {statuses.map((item) => <option key={item}>{item}</option>)}
+            {statuses.map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
           </select>
         </label>
         <label className="field">From<input type="date" name="from" defaultValue={query.from} /></label>
         <label className="field">To<input type="date" name="to" defaultValue={query.to} /></label>
-        <button className="h-10 rounded-lg bg-primary px-3 text-sm text-primary-foreground" type="submit">Apply</button>
+        <div className="flex gap-2"><Button type="submit" className="h-11 flex-1 lg:flex-none">Apply</Button><Link href="/console/org/bookings" className={buttonVariants({ variant: "ghost", className: "h-11" })}>Reset</Link></div>
       </form>
-      {result.rows.length === 0 ? <EmptyState title="No visits in this range" body="Widen the dates or clear the status filter." /> : (
+      {result.rows.length === 0 ? <EmptyState title="No bookings found" body="Try other dates, or tap Reset to clear the filters." /> : (
         <BookingTable rows={result.rows.map((booking) => ({
           href: `/console/org/bookings/${booking.id}`,
           code: booking.publicCode,
@@ -61,11 +62,17 @@ async function BookingsBody({ query }: { query: { status?: string; q?: string; f
           total: formatInr(booking.totalPaise),
         }))} />
       )}
-      <div className="flex gap-3 text-sm">
-        {page > 1 ? <Link href={`?page=${page - 1}&status=${query.status ?? ""}&q=${query.q ?? ""}&from=${query.from ?? ""}&to=${query.to ?? ""}`}>Previous</Link> : null}
-        <span>Page {page} of {pages}</span>
-        {page < pages ? <Link href={`?page=${page + 1}&status=${query.status ?? ""}&q=${query.q ?? ""}&from=${query.from ?? ""}&to=${query.to ?? ""}`}>Next</Link> : null}
-      </div>
+      {pages > 1 ? (
+        <nav aria-label="Pages" className="flex items-center justify-between text-sm">
+          {page > 1 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`?${new URLSearchParams({ ...clean(query), page: String(page - 1) })}`}>Previous page</Link> : <span />}
+          <span className="text-muted-foreground">Page {page} of {pages}</span>
+          {page < pages ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`?${new URLSearchParams({ ...clean(query), page: String(page + 1) })}`}>Next page</Link> : <span />}
+        </nav>
+      ) : null}
     </>
   );
+}
+
+function clean(query: Record<string, string | undefined>) {
+  return Object.fromEntries(Object.entries(query).filter((entry): entry is [string, string] => Boolean(entry[1]) && entry[0] !== "page"));
 }

@@ -1,6 +1,9 @@
 "use client";
 
+import { buttonVariants } from "@/components/ui/button";
+
 import { useId } from "react";
+import { ActionForm } from "@/components/action-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,20 +21,22 @@ export function ConfirmForm({
   confirm,
   submit,
   children,
+  variant = "outline",
 }: {
   action: (form: FormData) => void | Promise<void>;
   confirm: string;
   submit: string;
   children?: React.ReactNode;
+  variant?: "default" | "outline" | "destructive" | "secondary";
 }) {
   const formId = `confirm-${useId().replace(/:/g, "")}`;
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <form id={formId} action={action} className="flex flex-wrap items-end gap-2">
+      <ActionForm id={formId} action={action} className="flex flex-wrap items-end gap-2">
         {children}
-      </form>
+      </ActionForm>
       <AlertDialog>
-        <AlertDialogTrigger render={<button className="h-10 rounded-lg border bg-background px-3 text-sm" type="button" />}>
+        <AlertDialogTrigger render={<button className={buttonVariants({ variant, className: "h-10" })} type="button" />}>
           {submit}
         </AlertDialogTrigger>
         <AlertDialogContent>
@@ -41,7 +46,7 @@ export function ConfirmForm({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-            <AlertDialogAction type="submit" form={formId}>Confirm</AlertDialogAction>
+            <AlertDialogAction type="submit" form={formId} variant={variant === "destructive" ? "destructive" : "default"}>{submit}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

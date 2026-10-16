@@ -16,7 +16,7 @@ export default async function CentersReviewPage({ searchParams }: { searchParams
   if (blocked) return blocked;
   return (
     <>
-      <PageHeader eyebrow="Review" title="Centers" description="Approve starts a trial. Suspend and reject take the center out of the public directory." />
+      <PageHeader eyebrow="Review" title="Centers" description="Check documents and approve new centers. Approval starts a free trial. Suspended or rejected centers are hidden from patients." />
       <form className="flex flex-wrap gap-2 text-sm">
         {["", "PENDING", "ACTIVE", "SUSPENDED", "REJECTED"].map((value) => (
           <button key={value || "all"} name="status" value={value} className="rounded-full border px-3 py-1">{value || "All"}</button>

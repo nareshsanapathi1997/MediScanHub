@@ -176,10 +176,10 @@ async function main() {
 
   await prisma.branch.createMany({
     data: [
-      { id: ID.jubilee, tenantId: ID.apex, name: "Jubilee Hills", code: "JUB", address: "Road No. 36, Jubilee Hills", city: "Hyderabad", state: "Telangana", phone: "+914040001112", homeCollection: true, opensAt: "07:00", closesAt: "20:00" },
-      { id: ID.gachibowli, tenantId: ID.apex, name: "Gachibowli", code: "GAC", address: "Financial District", city: "Hyderabad", state: "Telangana", phone: "+914040001113", homeCollection: false },
-      { id: ID.indiranagar, tenantId: ID.nimbus, name: "Indiranagar", code: "IND", address: "100 Feet Road", city: "Bengaluru", state: "Karnataka", phone: "+918040002223", homeCollection: true },
-      { id: ID.bandra, tenantId: ID.coastal, name: "Bandra", code: "BAN", address: "Linking Road", city: "Mumbai", state: "Maharashtra", phone: "+912240003334", homeCollection: false, active: false },
+      { id: ID.jubilee, tenantId: ID.apex, name: "Jubilee Hills", code: "JUB", address: "Plot 12, Road No. 36, Jubilee Hills, Hyderabad 500033", city: "Hyderabad", state: "Telangana", phone: "+914040001112", homeCollection: true, opensAt: "07:00", closesAt: "20:00" },
+      { id: ID.gachibowli, tenantId: ID.apex, name: "Gachibowli", code: "GAC", address: "Survey No. 45, Financial District, Gachibowli, Hyderabad 500032", city: "Hyderabad", state: "Telangana", phone: "+914040001113", homeCollection: false },
+      { id: ID.indiranagar, tenantId: ID.nimbus, name: "Indiranagar", code: "IND", address: "560, 100 Feet Road, Indiranagar, Bengaluru 560038", city: "Bengaluru", state: "Karnataka", phone: "+918040002223", homeCollection: true },
+      { id: ID.bandra, tenantId: ID.coastal, name: "Bandra", code: "BAN", address: "14, Linking Road, Bandra West, Mumbai 400050", city: "Mumbai", state: "Maharashtra", phone: "+912240003334", homeCollection: false, active: false },
     ],
   });
 
@@ -201,7 +201,7 @@ async function main() {
     if (branchId) await prisma.staffAssignment.create({ data: { tenantId, userId, branchId, roleId: roles[roleKey] } });
   }
 
-  async function labService(input: { id: string; tenantId: string; categoryId: string; name: string; slug: string; code: string; description: string; sampleType: string; tatHours: number; price: number; branchIds: string[] }) {
+  async function labService(input: { id: string; tenantId: string; categoryId: string; name: string; slug: string; code: string; description: string; sampleType: string; tatHours: number; price: number; branchIds: string[]; preparation?: string }) {
     await prisma.diagnosticService.create({
       data: {
         id: input.id,
@@ -213,7 +213,7 @@ async function main() {
         kind: "LAB",
         description: input.description,
         sampleType: input.sampleType,
-        preparation: "No special preparation unless the center tells you otherwise. This is demonstration copy.",
+        preparation: input.preparation ?? "No fasting needed. Drink water as usual.",
         tatHours: input.tatHours,
         published: true,
       },
@@ -224,11 +224,25 @@ async function main() {
     }
   }
 
-  await labService({ id: ID.cbc, tenantId: ID.apex, categoryId: ID.catHeme, name: "Complete Blood Count", slug: "cbc", code: "CBC", description: "Counts of red cells, white cells, and platelets. Synthetic catalog item.", sampleType: "EDTA blood", tatHours: 6, price: 45000, branchIds: [ID.jubilee, ID.gachibowli] });
-  await labService({ id: ID.lipid, tenantId: ID.apex, categoryId: ID.catChem, name: "Lipid Profile", slug: "lipid-profile", code: "LIPID", description: "Cholesterol and triglyceride panel. Synthetic catalog item.", sampleType: "Serum", tatHours: 12, price: 79900, branchIds: [ID.jubilee] });
-  await labService({ id: ID.tsh, tenantId: ID.apex, categoryId: ID.catThyroid, name: "TSH", slug: "tsh", code: "TSH", description: "Thyroid stimulating hormone. Synthetic catalog item.", sampleType: "Serum", tatHours: 12, price: 35000, branchIds: [ID.jubilee, ID.gachibowli] });
-  await labService({ id: ID.hba1c, tenantId: ID.apex, categoryId: ID.catChem, name: "HbA1c", slug: "hba1c", code: "HBA1C", description: "Glycated hemoglobin. Synthetic catalog item.", sampleType: "EDTA blood", tatHours: 12, price: 55000, branchIds: [ID.jubilee] });
-  await labService({ id: ID.nimbusCbc, tenantId: ID.nimbus, categoryId: ID.catHeme, name: "Complete Blood Count", slug: "cbc", code: "CBC", description: "Nimbus synthetic CBC. Prices differ from Apex on purpose.", sampleType: "EDTA blood", tatHours: 8, price: 39900, branchIds: [ID.indiranagar] });
+  await labService({ id: ID.cbc, tenantId: ID.apex, categoryId: ID.catHeme, name: "Complete Blood Count", slug: "cbc", code: "CBC", description: "Checks haemoglobin, red cells, white cells and platelets. Helps find anaemia and infection.", sampleType: "EDTA blood", tatHours: 6, price: 45000, branchIds: [ID.jubilee, ID.gachibowli] });
+  await labService({ id: ID.lipid, tenantId: ID.apex, categoryId: ID.catChem, name: "Lipid Profile", slug: "lipid-profile", code: "LIPID", description: "Cholesterol and triglycerides. Checks heart health.", sampleType: "Serum", tatHours: 12, price: 79900, branchIds: [ID.jubilee], preparation: "Fast for 10–12 hours. Plain water is fine." });
+  await labService({ id: ID.tsh, tenantId: ID.apex, categoryId: ID.catThyroid, name: "TSH", slug: "tsh", code: "TSH", description: "Thyroid Stimulating Hormone. A first check for thyroid problems.", sampleType: "Serum", tatHours: 12, price: 35000, branchIds: [ID.jubilee, ID.gachibowli] });
+  await labService({ id: ID.hba1c, tenantId: ID.apex, categoryId: ID.catChem, name: "HbA1c", slug: "hba1c", code: "HBA1C", description: "Average blood sugar of the last 3 months. Used for diabetes.", sampleType: "EDTA blood", tatHours: 12, price: 55000, branchIds: [ID.jubilee] });
+  await labService({ id: ID.nimbusCbc, tenantId: ID.nimbus, categoryId: ID.catHeme, name: "Complete Blood Count", slug: "cbc", code: "CBC", description: "Checks haemoglobin, red cells, white cells and platelets.", sampleType: "EDTA blood", tatHours: 8, price: 39900, branchIds: [ID.indiranagar] });
+
+  // More common Indian tests and scans for the catalog (synthetic demo data).
+  await labService({ id: "80000000-0000-4000-8000-000000000007", tenantId: ID.apex, categoryId: ID.catChem, name: "Liver Function Test (LFT)", slug: "lft", code: "LFT", description: "Checks how well your liver is working: bilirubin, SGOT, SGPT, ALP and proteins.", sampleType: "Serum", tatHours: 12, price: 69900, branchIds: [ID.jubilee, ID.gachibowli] });
+  await labService({ id: "80000000-0000-4000-8000-000000000008", tenantId: ID.apex, categoryId: ID.catChem, name: "Kidney Function Test (KFT)", slug: "kft", code: "KFT", description: "Checks kidney health: urea, creatinine, uric acid and electrolytes.", sampleType: "Serum", tatHours: 12, price: 64900, branchIds: [ID.jubilee, ID.gachibowli] });
+  await labService({ id: "80000000-0000-4000-8000-000000000009", tenantId: ID.apex, categoryId: ID.catThyroid, name: "Thyroid Profile (T3, T4, TSH)", slug: "thyroid-profile", code: "THY", description: "Full thyroid check with T3, T4 and TSH.", sampleType: "Serum", tatHours: 24, price: 59900, branchIds: [ID.jubilee, ID.gachibowli] });
+  await labService({ id: "80000000-0000-4000-8000-000000000010", tenantId: ID.apex, categoryId: ID.catChem, name: "Fasting Blood Sugar (FBS)", slug: "fbs", code: "FBS", description: "Blood sugar after an overnight fast. Used to check for diabetes.", sampleType: "Fluoride plasma", tatHours: 6, price: 15000, branchIds: [ID.jubilee, ID.gachibowli], preparation: "Fast for 8–10 hours. Plain water is fine. Take your usual medicines only if your doctor says so." });
+  async function imagingService(input: { id: string; name: string; slug: string; code: string; modality: string; description: string; preparation: string; tatHours: number; price: number }) {
+    await prisma.diagnosticService.create({ data: { id: input.id, tenantId: ID.apex, categoryId: ID.catImaging, name: input.name, slug: input.slug, code: input.code, kind: "IMAGING", modality: input.modality, description: input.description, preparation: input.preparation, tatHours: input.tatHours, published: true } });
+    await prisma.branchService.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, serviceId: input.id, active: true } });
+    await prisma.servicePrice.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, serviceId: input.id, pricePaise: input.price } });
+  }
+  await imagingService({ id: "80000000-0000-4000-8000-000000000011", name: "Chest X-ray (PA view)", slug: "xray-chest", code: "XR-CHEST", modality: "XR", description: "X-ray of the chest to check the lungs and heart.", preparation: "Remove metal items like chains and wear loose clothes. Tell the staff if you may be pregnant.", tatHours: 24, price: 40000 });
+  await imagingService({ id: "80000000-0000-4000-8000-000000000012", name: "CT Brain (plain)", slug: "ct-brain", code: "CT-BRAIN", modality: "CT", description: "CT scan of the head, without contrast dye.", preparation: "No fasting needed. Bring your old scans and doctor's prescription.", tatHours: 24, price: 250000 });
+  await imagingService({ id: "80000000-0000-4000-8000-000000000013", name: "MRI Knee", slug: "mri-knee", code: "MRI-KNEE", modality: "MR", description: "MRI scan of one knee to check ligaments, cartilage and bones.", preparation: "Remove all metal. Tell the staff if you have a pacemaker, implant or metal in your body.", tatHours: 48, price: 550000 });
 
   await prisma.diagnosticService.create({
     data: {
@@ -240,8 +254,8 @@ async function main() {
       code: "USG-ABD",
       kind: "IMAGING",
       modality: "US",
-      description: "Abdominal ultrasound slot. DICOM/PACS is not connected.",
-      preparation: "Fast for 6 hours when the center confirms it. Demonstration instruction only.",
+      description: "Ultrasound scan of the liver, gall bladder, kidneys and other organs in the abdomen.",
+      preparation: "Do not eat for 6 hours before the scan. Drink 4–5 glasses of water 1 hour before and do not pass urine.",
       tatHours: 24,
       published: true,
     },
@@ -277,9 +291,9 @@ async function main() {
     data: {
       id: ID.pkgWell,
       tenantId: ID.apex,
-      name: "Wellness Screen",
+      name: "Basic Health Checkup",
       slug: "wellness-screen",
-      description: "Synthetic package combining CBC, TSH, and HbA1c.",
+      description: "CBC, TSH and HbA1c together at a lower price. Good for a yearly checkup.",
       pricePaise: 119900,
       published: true,
       items: { create: [{ serviceId: ID.cbc }, { serviceId: ID.tsh }, { serviceId: ID.hba1c }] },
@@ -424,6 +438,8 @@ async function main() {
   await writeFile(path.join(root, storageKey), pdf);
   await prisma.reportVersion.create({ data: { tenantId: ID.apex, reportId: report.id, version: 1, storageKey, checksum: sha256(pdf.toString("base64")), createdById: ID.pathApex, note: "Initial release" } });
 
+  // Every booking implies a chart at that center; without it RLS hides the patient from Nimbus staff.
+  await prisma.patientBranchRecord.create({ data: { tenantId: ID.nimbus, branchId: ID.indiranagar, patientId: ID.patientRavi, mrn: "IND-00001" } });
   await prisma.booking.create({
     data: {
       id: ID.bookingNimbus,

@@ -16,7 +16,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const users = await listUsersAdmin(actor, q);
   return (
     <>
-      <PageHeader eyebrow="Access" title="Users" description="Suspending a user revokes their open sessions. You cannot change your own status here." />
+      <PageHeader eyebrow="Access" title="Users" description="Suspending a user signs them out at once. You cannot suspend yourself." />
       <form className="flex gap-2">
         <label className="field flex-1">Search<input name="q" defaultValue={q} /></label>
         <button className="h-10 self-end rounded-lg bg-primary px-3 text-sm text-primary-foreground" type="submit">Search</button>

@@ -1,7 +1,5 @@
 import { DomainError } from "@/lib/errors";
 import { ZodError } from "zod";
-import { assertCsrf, assertSameOrigin, currentSession } from "@/server/session";
-import type { Actor } from "@/domain/actor";
 
 export function ok(data: unknown, status = 200) {
   return Response.json({ ok: true, data }, { status });
@@ -26,20 +24,3 @@ export async function readBody(req: Request) {
   }
 }
 
-type RouteCtx = { params: Promise<Record<string, string>> };
-
-export function route(handler: (req: Request, ctx: RouteCtx & { actor: Actor | null }) => Promise<Response>, options?: { csrf?: boolean; auth?: boolean }) {
-  return async (req: Request, ctx: RouteCtx) => {
-    try {
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        assertSameOrigin(req);
-        if (options?.csrf !== false) await assertCsrf(req);
-      }
-      const session = await currentSession();
-      if (options?.auth && !session) throw new DomainError("UNAUTHENTICATED", "Sign in required", 401);
-      return await handler(req, { ...ctx, actor: session?.actor ?? null });
-    } catch (error) {
-      return fail(error);
-    }
-  };
-}

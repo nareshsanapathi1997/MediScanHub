@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["bcryptjs", "@prisma/client", "pdf-lib"],
+  // Report scans and prescriptions are uploaded through server actions (default limit is 1 MB).
+  experimental: { serverActions: { bodySizeLimit: "21mb" } },
   async headers() {
     return [
       {

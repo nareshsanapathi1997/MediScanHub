@@ -24,7 +24,7 @@ async function PricingBody() {
   const [services, branches] = await Promise.all([listTenantCatalog(actor), tenantBranches(actor)]);
   return (
     <>
-      <PageHeader eyebrow="Pricing" title="Branch prices and discounts" description="Checkout ignores any amount sent by the browser and uses the active branch price." />
+      <PageHeader eyebrow="Pricing" title="Prices and discounts" description="Set the price of each test at each branch, in rupees. Patients pay the price shown here." />
       <div className="grid gap-2 text-sm">
         {services.flatMap((service) => service.prices.map((price) => (
           <p key={price.id}>{service.name} · {formatInr(price.pricePaise)}{price.discountPaise ? ` less ${formatInr(price.discountPaise)}` : ""}</p>

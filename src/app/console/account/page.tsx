@@ -6,6 +6,7 @@ import { prismaPrivileged } from "@/lib/db";
 import { ConfirmForm } from "@/components/confirm-form";
 import { FormBox } from "@/components/form-box";
 import { PageHeader } from "@/components/widgets";
+import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Account" };
 
@@ -37,10 +38,10 @@ export default async function AccountPage() {
           <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
             <span>{formatWhen(item.lastSeenAt)} · {item.userAgent ?? "Unknown device"}{item.id === session.sessionId ? " · this browser" : ""}</span>
             {item.id !== session.sessionId ? (
-              <form action={revokeListedSessionAction}>
+              <ActionForm action={revokeListedSessionAction}>
                 <input type="hidden" name="sessionId" value={item.id} />
                 <button className="h-9 rounded-lg border px-3" type="submit">Revoke</button>
-              </form>
+              </ActionForm>
             ) : null}
           </div>
         ))}

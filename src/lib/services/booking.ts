@@ -353,7 +353,12 @@ export async function createWalkIn(actor: Actor, input: BookingDraft & { patient
   if (!input.patientId) {
     if (!input.patient) throw new DomainError("PATIENT", "Patient details are required", 400);
     const email = input.patient.email.trim().toLowerCase();
-    let user = await prismaPrivileged.user.findUnique({ where: { email }, select: { id: true, email: true, patient: { select: { id: true } } } });
+    let user = await prismaPrivileged.user.findUnique({ where: { email }, select: { id: true, email: true, name: true, phone: true, patient: { select: { id: true } } } });
+    // Do not attach a walk-in to someone else's existing account just because the email was mistyped.
+    const norm = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "").slice(-10);
+    if (user && user.name.trim().toLowerCase() !== input.patient.name.trim().toLowerCase() && norm(user.phone) !== norm(input.patient.phone)) {
+      throw new DomainError("PATIENT_MISMATCH", "That email already belongs to a patient with a different name and phone. Check the details or search the patient first.", 409);
+    }
     if (!user) {
       const role = await prismaPrivileged.role.findUnique({ where: { key: "PATIENT" } });
       if (!role) throw new DomainError("ROLE_MISSING", "Patient role is not configured", 500);
@@ -367,7 +372,7 @@ export async function createWalkIn(actor: Actor, input: BookingDraft & { patient
           patient: { create: { dateOfBirth: input.patient.dateOfBirth, sex: input.patient.sex, isSynthetic: false } },
           memberships: { create: { roleId: role.id, status: "ACTIVE", acceptedAt: new Date() } },
         },
-        select: { id: true, email: true, patient: { select: { id: true } } },
+        select: { id: true, email: true, name: true, phone: true, patient: { select: { id: true } } },
       });
     }
     if (!user.patient) throw new DomainError("PATIENT", "That email belongs to a staff account without a patient profile", 409);
@@ -496,6 +501,10 @@ export async function listBookings(actor: Actor, filters: { status?: BookingStat
 }
 
 export async function transitionBooking(actor: Actor, bookingId: string, to: BookingStatus, reason?: string) {
+  if (!(to in BOOKING_TRANSITIONS)) throw new DomainError("INVALID_TRANSITION", "Unknown booking status", 400);
+  // A refund moves money; it must go through refundPayment, never a bare status change.
+  if (to === "REFUNDED") throw new DomainError("REFUND", "Issue the refund from Finance. The booking is marked refunded when the provider confirms it.", 409);
+  if (to === "CANCELLED" && !reason?.trim()) throw new DomainError("REASON", "Add a cancellation reason", 400);
   const booking = await getBooking(actor, bookingId);
   const patientSelf = actor.patientId === booking.patientId;
   if (patientSelf && to === "CANCELLED") {
@@ -512,12 +521,20 @@ export async function transitionBooking(actor: Actor, bookingId: string, to: Boo
     }
   }
   return withScope({ tenantId: booking.tenantId, userId: actor.userId, patientId: actor.patientId }, async (tx) => {
+    // Compare-and-set on the status we validated so two concurrent requests cannot both apply
+    // (for example a double cancel releasing the same slot twice).
+    const claimed = await tx.booking.updateMany({ where: { id: booking.id, tenantId: booking.tenantId, status: booking.status }, data: { status: to } });
+    if (claimed.count !== 1) throw new DomainError("CONFLICT", "This booking was changed by someone else. Reload and try again.", 409);
     if (to === "CANCELLED" && booking.slotId) await releaseSlot(tx, booking.tenantId, booking.slotId);
-    if (to === "CANCELLED" && booking.collection) {
+    if (to === "CANCELLED" && booking.collection && booking.collection.status !== "CANCELLED" && booking.collection.status !== "COLLECTED") {
       assertTransition(COLLECTION_TRANSITIONS, booking.collection.status, "CANCELLED", "Home collection");
       await tx.homeCollectionTask.update({ where: { id: booking.collection.id }, data: { status: "CANCELLED" } });
     }
-    const updated = await tx.booking.update({ where: { id: booking.id }, data: { status: to } });
+    if (to === "CANCELLED") {
+      await tx.sample.updateMany({ where: { tenantId: booking.tenantId, labOrder: { bookingId: booking.id }, status: "PENDING" }, data: { status: "REJECTED", rejectionReason: "Booking cancelled" } });
+      await tx.imagingStudy.updateMany({ where: { tenantId: booking.tenantId, imagingOrder: { bookingId: booking.id }, status: "SCHEDULED" }, data: { status: "CANCELLED" } });
+    }
+    const updated = await tx.booking.findUniqueOrThrow({ where: { id: booking.id } });
     await tx.bookingStatusHistory.create({ data: { tenantId: booking.tenantId, bookingId: booking.id, fromStatus: booking.status, toStatus: to, actorId: actor.userId, reason } });
     if (to === "CONFIRMED" && !booking.labOrder && !booking.imagingOrder) {
       const items = await tx.bookingItem.findMany({ where: { bookingId: booking.id }, include: { service: true, package: { include: { items: { include: { service: true } } } } } });
@@ -559,9 +576,16 @@ export async function rescheduleBooking(actor: Actor, bookingId: string, slotId:
   if (!["PENDING", "CONFIRMED"].includes(booking.status)) throw new DomainError("INVALID_TRANSITION", "This visit can no longer be rescheduled", 409);
   const kind: SlotKind = booking.visitType === "HOME_COLLECTION" ? "HOME" : "CENTER";
   return withScope({ tenantId: booking.tenantId, userId: actor.userId, patientId: actor.patientId }, async (tx) => {
+    if (booking.slotId === slotId) throw new DomainError("SLOT", "Choose a different time slot", 400);
     const slot = await acquireSlot(tx, booking.tenantId, booking.branchId, slotId, kind);
+    // Compare-and-set on the old slot: a concurrent reschedule or cancel makes this fail and rolls back the new hold.
+    const moved = await tx.booking.updateMany({
+      where: { id: booking.id, tenantId: booking.tenantId, slotId: booking.slotId, status: { in: ["PENDING", "CONFIRMED"] } },
+      data: { slotId: slot.id, scheduledAt: slot.startsAt },
+    });
+    if (moved.count !== 1) throw new DomainError("CONFLICT", "This booking was changed by someone else. Reload and try again.", 409);
     if (booking.slotId) await releaseSlot(tx, booking.tenantId, booking.slotId);
-    const updated = await tx.booking.update({ where: { id: booking.id }, data: { slotId: slot.id, scheduledAt: slot.startsAt } });
+    const updated = await tx.booking.findUniqueOrThrow({ where: { id: booking.id } });
     if (booking.collection) {
       await tx.homeCollectionTask.update({
         where: { id: booking.collection.id },

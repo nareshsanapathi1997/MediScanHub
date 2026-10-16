@@ -3,13 +3,20 @@ import type { BookingStatus } from "@prisma/client";
 import { BOOKING_TRANSITIONS } from "@/domain/state";
 import { hasPermission, type Actor } from "@/domain/actor";
 import { bookingTransitionAction, payAction, rescheduleAction } from "@/server/actions";
-import { formatInr, formatWhen } from "@/lib/format";
-import { Breadcrumbs, StatusPill } from "@/components/widgets";
+import { formatInr, formatWhen, titleCase } from "@/lib/format";
+import { Building2, CalendarClock, Home, MapPin, ReceiptText } from "@/components/icons";
+import { Button } from "@/components/ui/button";
+import { Breadcrumbs, Panel, StatusPill } from "@/components/widgets";
 import { FormBox } from "@/components/form-box";
 import { ConfirmForm } from "@/components/confirm-form";
 import type { getBooking } from "@/lib/services/booking";
+import type { listBookingReports } from "@/lib/services/report-files";
+import { ReportFileList } from "@/components/report-files";
+import { buttonVariants } from "@/components/ui/button";
+import { Download } from "@/components/icons";
 
 type Booking = NonNullable<Awaited<ReturnType<typeof getBooking>>>;
+type BookingReports = Awaited<ReturnType<typeof listBookingReports>>;
 
 export function BookingView({
   booking,
@@ -17,9 +24,11 @@ export function BookingView({
   slots,
   back,
   crumbs,
+  reports = [],
 }: {
   booking: Booking;
   actor: Actor;
+  reports?: BookingReports;
   slots: Array<{ id: string; startsAt: Date }>;
   back: string;
   crumbs: Array<{ href?: string; label: string }>;
@@ -28,128 +37,185 @@ export function BookingView({
   const staff = hasPermission(actor, "bookings.manage", booking.tenantId);
   const canDownloadRx = Boolean(booking.prescriptionStorageKey) && (mine || staff || hasPermission(actor, "bookings.read", booking.tenantId));
   const next = BOOKING_TRANSITIONS[booking.status].filter((status) => {
+    if (status === "REFUNDED") return false; // refunds go through Finance so money and status move together
     if (mine && !staff) return status === "CANCELLED" && ["PENDING", "CONFIRMED"].includes(booking.status);
     if (status === "CANCELLED") return hasPermission(actor, "bookings.cancel", booking.tenantId);
-    if (status === "REFUNDED") return hasPermission(actor, "payments.refund", booking.tenantId);
     return staff;
   });
   const payable = booking.status === "PENDING" && mine && booking.invoice && booking.invoice.status !== "PAID";
   const visitFor = booking.dependent
     ? `${booking.dependent.name} (${booking.dependent.relation}) · booked by ${booking.patient.user.name}`
     : booking.patient.user.name;
+  const paid = booking.invoice?.status === "PAID";
+  const reportsOpen = booking.status === "IN_PROGRESS";
+  const canLab = hasPermission(actor, "samples.read", booking.tenantId) && actor.activeTenantId === booking.tenantId;
+  const canReport = actor.activeTenantId === booking.tenantId && ["reports.verify", "imaging.report"].some((permission) => hasPermission(actor, permission, booking.tenantId));
   return (
     <div className="grid gap-6">
       <Breadcrumbs items={crumbs} />
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-semibold tracking-[0.16em] text-primary uppercase">{booking.tenant.name}</p>
-          <h1 className="font-display text-4xl">{booking.publicCode}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{booking.branch.name} · {formatWhen(booking.scheduledAt)} · {booking.visitType.replaceAll("_", " ").toLowerCase()}</p>
+          <h1 className="font-display text-3xl tracking-tight sm:text-4xl">{booking.publicCode}</h1>
+          <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5"><MapPin className="size-4" aria-hidden />{booking.branch.name}</span>
+            <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" aria-hidden />{formatWhen(booking.scheduledAt)}</span>
+            <span className="inline-flex items-center gap-1.5">{booking.visitType === "HOME_COLLECTION" ? <Home className="size-4" aria-hidden /> : <Building2 className="size-4" aria-hidden />}{titleCase(booking.visitType)}</span>
+          </p>
         </div>
         <StatusPill value={booking.status} />
       </div>
-      <section className="grid gap-3 rounded-2xl border bg-card p-4">
-        <h2 className="font-display text-2xl">Services</h2>
-        {booking.items.map((item) => (
-          <div key={item.id} className="flex justify-between text-sm">
-            <span>{item.name}</span>
-            <span>{formatInr(item.pricePaise)}</span>
-          </div>
-        ))}
-        <p className="text-right font-medium">Catalog total {formatInr(booking.totalPaise)}</p>
-        {booking.invoice ? (
-          <div className="grid gap-1 border-t pt-3 text-sm">
-            <p>Invoice {booking.invoice.number} · {booking.invoice.status}</p>
-            {booking.invoice.walletRedeemPaise > 0 ? <p className="text-muted-foreground">Wallet applied: {formatInr(booking.invoice.walletRedeemPaise)}</p> : null}
-            <p className="font-medium">Amount due {formatInr(booking.invoice.totalPaise)}</p>
-            {booking.invoice.insurancePolicy ? (
-              <p className="text-muted-foreground">
-                Insurance: {booking.invoice.insurancePolicy.provider} · {booking.invoice.insurancePolicy.policyNumber}
-                {booking.invoice.insurancePolicy.tpaName ? ` · TPA ${booking.invoice.insurancePolicy.tpaName}` : ""}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid content-start gap-4 lg:col-span-2">
+          <Panel title="Services" description={`Patient: ${visitFor}`}>
+            <ul className="divide-y text-sm">
+              {booking.items.map((item) => (
+                <li key={item.id} className="flex justify-between gap-3 py-2.5"><span>{item.name}</span><span className="tabular-nums">{formatInr(item.pricePaise)}</span></li>
+              ))}
+              <li className="flex justify-between gap-3 pt-3 font-semibold"><span>Catalog total</span><span className="tabular-nums">{formatInr(booking.totalPaise)}</span></li>
+            </ul>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <ReceiptText className="size-4" aria-hidden />Invoice {booking.invoice?.number ?? "pending"} {booking.invoice ? <StatusPill value={booking.invoice.status} /> : null}
+            </div>
+            {booking.invoice ? (
+              <div className="mt-2 grid gap-1 text-sm">
+                {booking.invoice.walletRedeemPaise > 0 ? <p className="text-muted-foreground">Wallet applied: {formatInr(booking.invoice.walletRedeemPaise)}</p> : null}
+                <p className="font-medium">Amount due {formatInr(booking.invoice.totalPaise)}</p>
+                {booking.invoice.insurancePolicy ? (
+                  <p className="text-muted-foreground">
+                    Insurance: {booking.invoice.insurancePolicy.provider} · {booking.invoice.insurancePolicy.policyNumber}
+                    {booking.invoice.insurancePolicy.tpaName ? ` · TPA ${booking.invoice.insurancePolicy.tpaName}` : ""}
+                  </p>
+                ) : null}
+                {booking.invoice.tpaReference ? <p className="text-muted-foreground">TPA reference: {booking.invoice.tpaReference}</p> : null}
+                {booking.invoice.tpaClaims?.length ? (
+                  <p className="text-muted-foreground">TPA claim: {booking.invoice.tpaClaims[0]!.status.toLowerCase()} · {formatInr(booking.invoice.tpaClaims[0]!.claimedPaise)}</p>
+                ) : null}
+              </div>
+            ) : null}
+            {staff && booking.patient.chronicConditions.length > 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">Chronic: {booking.patient.chronicConditions.map((row) => row.condition).join("; ")}</p>
+            ) : null}
+            {booking.notes ? <p className="mt-2 text-sm whitespace-pre-wrap">Notes: {booking.notes}</p> : null}
+            {canDownloadRx ? (
+              <p className="mt-2 text-sm">
+                Prescription: {booking.prescriptionFileName ?? "uploaded file"}{" "}
+                <a className="text-primary" href={`/api/v1/bookings/${booking.id}/prescription`}>Download</a>
               </p>
             ) : null}
-            {booking.invoice.tpaReference ? <p className="text-muted-foreground">TPA reference: {booking.invoice.tpaReference}</p> : null}
-            {booking.invoice.tpaClaims?.length ? (
-              <p className="text-muted-foreground">TPA claim: {booking.invoice.tpaClaims[0]!.status.toLowerCase()} · {formatInr(booking.invoice.tpaClaims[0]!.claimedPaise)}</p>
-            ) : null}
-          </div>
-        ) : null}
-        <p className="text-sm text-muted-foreground">Patient: {visitFor}</p>
-        {staff && booking.patient.chronicConditions.length > 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Chronic: {booking.patient.chronicConditions.map((row) => row.condition).join("; ")}
-          </p>
-        ) : null}
-        {booking.notes ? <p className="text-sm whitespace-pre-wrap">Notes: {booking.notes}</p> : null}
-        {canDownloadRx ? (
-          <p className="text-sm">
-            Prescription: {booking.prescriptionFileName ?? "uploaded file"}{" "}
-            <Link className="text-primary" href={`/api/v1/bookings/${booking.id}/prescription`}>Download</Link>
-          </p>
-        ) : null}
-        {booking.address ? <p className="text-sm">Pickup: {booking.address}</p> : null}
-        {booking.collection ? <p className="text-sm">Home collection {booking.collection.status.toLowerCase()}{booking.collection.assignee ? ` · ${booking.collection.assignee.name}` : ""}.</p> : null}
-      </section>
-      {payable ? (
-        <FormBox action={payAction} submit="Pay and confirm" success="Payment captured.">
-          <input type="hidden" name="bookingId" value={booking.id} />
-          <input type="hidden" name="idempotencyKey" value={`pay-${booking.id}`} />
-          <p className="text-sm text-muted-foreground">Pay {formatInr(booking.invoice!.totalPaise)}. The server creates the payment order and checks the signature.</p>
-        </FormBox>
-      ) : null}
-      {next.length > 0 ? (
-        <section className="grid gap-3">
-          <h2 className="font-display text-2xl">Move this visit</h2>
-          <div className="flex flex-wrap gap-3">
-            {next.map((status) => (
-              <ConfirmForm key={status} action={bookingTransitionAction} confirm={`Move ${booking.publicCode} to ${status}?`} submit={labelFor(status)}>
+            {booking.address ? <p className="mt-2 text-sm"><span className="text-muted-foreground">Pickup address:</span> {booking.address}</p> : null}
+            {booking.collection ? <p className="mt-2 flex flex-wrap items-center gap-2 text-sm"><span className="text-muted-foreground">Home collection</span><StatusPill value={booking.collection.status} />{booking.collection.assignee ? <span>· {booking.collection.assignee.name}</span> : null}</p> : null}
+          </Panel>
+          {reports.length > 0 || mine ? (
+            <Panel title="Reports" description={mine && !staff ? "Your reports appear here after the center releases them. Links open for 5 minutes and only for you." : "Open a report to enter results, upload files or review."}>
+              {reports.length === 0 ? <p className="text-sm text-muted-foreground">No report is ready yet. We will send you a message when it is.</p> : (
+                <ul className="grid gap-3">
+                  {reports.map((report) => (
+                    <li key={report.id} className="grid gap-2 rounded-xl border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium">{report.title}</span>
+                        <StatusPill value={report.status} />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {canLab || canReport ? <a className={buttonVariants({ variant: "outline", size: "sm" })} href={`/console/lab/reports/${report.id}`}>Open report</a> : null}
+                        {report.versions.length > 0 && (report.status === "RELEASED" || report.status === "AMENDED") ? (
+                          <a className={buttonVariants({ size: "sm" })} href={`/api/v1/reports/${report.id}/open`} target="_blank" rel="noopener"><Download className="size-4" aria-hidden />Download report PDF</a>
+                        ) : null}
+                      </div>
+                      {report.files.length > 0 ? <ReportFileList files={report.files} /> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+          ) : null}
+          {payable ? (
+            <Panel title="Pay to confirm" description="The server creates the payment order and verifies the provider signature. A browser success flag alone is never trusted.">
+              <FormBox action={payAction} submit={`Pay ${formatInr(booking.invoice?.totalPaise ?? booking.totalPaise)} and confirm`} success="Payment captured.">
                 <input type="hidden" name="bookingId" value={booking.id} />
-                <input type="hidden" name="to" value={status} />
-                {status === "CANCELLED" || status === "REFUNDED" ? <input name="reason" required placeholder="Reason" className="h-10 rounded-lg border px-3" /> : null}
-              </ConfirmForm>
-            ))}
-          </div>
-        </section>
-      ) : null}
-      {["PENDING", "CONFIRMED"].includes(booking.status) && (mine || staff) ? (
-        <section className="grid gap-3">
-          <h2 className="font-display text-2xl">Reschedule</h2>
-          <form className="flex flex-wrap gap-2" method="get">
-            <label className="field">Date<input type="date" name="day" /></label>
-            <button className="h-10 self-end rounded-lg border px-3 text-sm" type="submit">Show slots</button>
-          </form>
-          {slots.length === 0 ? <p className="text-sm text-muted-foreground">Choose a date to see open slots.</p> : slots.map((slot) => (
-            <ConfirmForm key={slot.id} action={rescheduleAction} confirm={`Move this visit to ${formatWhen(slot.startsAt)}?`} submit={formatWhen(slot.startsAt)}>
-              <input type="hidden" name="bookingId" value={booking.id} />
-              <input type="hidden" name="slotId" value={slot.id} />
-            </ConfirmForm>
-          ))}
-        </section>
-      ) : null}
-      <section className="grid gap-2">
-        <h2 className="font-display text-2xl">History</h2>
-        {booking.history.map((event) => (
-          <p key={event.id} className="text-sm text-muted-foreground">{formatWhen(event.createdAt)} · {event.toStatus} · {event.actor?.name ?? "System"}{event.reason ? ` · ${event.reason}` : ""}</p>
-        ))}
-      </section>
-      {booking.labOrder?.samples.length ? (
-        <section>
-          <h2 className="font-display text-2xl">Samples</h2>
-          {booking.labOrder.samples.map((sample) => (
-            <p key={sample.id} className="text-sm">{sample.barcode?.code ?? sample.id} · {sample.status}</p>
-          ))}
-        </section>
-      ) : null}
-      <Link href={back} className="text-sm text-primary">Back</Link>
+                <input type="hidden" name="idempotencyKey" value={`pay-${booking.id}`} />
+              </FormBox>
+            </Panel>
+          ) : null}
+          {next.length > 0 ? (
+            <Panel title={mine && !staff ? "Manage your visit" : "Move this visit"} description={reportsOpen ? "A visit completes only after every report is released." : paid && next.includes("CANCELLED") ? "This visit is paid. After cancelling, issue the refund from Finance." : undefined}>
+              <div className="flex flex-wrap gap-3">
+                {next.map((status) => (
+                  <ConfirmForm key={status} action={bookingTransitionAction} variant={status === "CANCELLED" ? "destructive" : "default"} confirm={status === "CANCELLED" ? `Cancel ${booking.publicCode}? The slot is released.` : `${labelFor(status)} for ${booking.publicCode}?`} submit={labelFor(status)}>
+                    <input type="hidden" name="bookingId" value={booking.id} />
+                    <input type="hidden" name="to" value={status} />
+                    {status === "CANCELLED" ? <input name="reason" required minLength={3} aria-label="Cancellation reason" placeholder="Reason (required)" className="h-10 w-56 rounded-lg border bg-card px-3 text-sm" /> : null}
+                  </ConfirmForm>
+                ))}
+              </div>
+            </Panel>
+          ) : null}
+          {["PENDING", "CONFIRMED"].includes(booking.status) && (mine || staff) ? (
+            <Panel title="Reschedule" description="Pick a date to see open slots at this branch. The old slot is released only when the new one is held.">
+              <form className="flex flex-wrap items-end gap-2" method="get">
+                <label className="field">Date<input type="date" name="day" required min={new Date().toISOString().slice(0, 10)} /></label>
+                <Button variant="outline" className="h-11" type="submit">Show slots</Button>
+              </form>
+              {slots.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No open slots shown. Choose a date above.</p> : (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {slots.filter((slot) => slot.id !== booking.slotId).map((slot) => (
+                    <ConfirmForm key={slot.id} action={rescheduleAction} confirm={`Move this visit to ${formatWhen(slot.startsAt)}?`} submit={formatTime(slot.startsAt)}>
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <input type="hidden" name="slotId" value={slot.id} />
+                    </ConfirmForm>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          ) : null}
+        </div>
+        <div className="grid content-start gap-4">
+          {booking.labOrder?.samples.length ? (
+            <Panel title="Samples">
+              <ul className="grid gap-2 text-sm">
+                {booking.labOrder.samples.map((sample) => (
+                  <li key={sample.id} className="flex items-center justify-between gap-2">{canLab ? <Link className="font-mono text-xs font-medium text-primary underline-offset-2 hover:underline" href={`/console/lab/samples/${sample.id}`}>{sample.barcode?.code ?? "Open sample"}</Link> : <span className="font-mono text-xs">{sample.barcode?.code ?? "No barcode"}</span>}<StatusPill value={sample.status} /></li>
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
+          {booking.imagingOrder?.studies.length ? (
+            <Panel title="Imaging">
+              <ul className="grid gap-2 text-sm">
+                {booking.imagingOrder.studies.map((study) => (
+                  <li key={study.id} className="flex items-center justify-between gap-2"><span className="font-mono text-xs">{study.accession}</span><StatusPill value={study.status} /></li>
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
+          <Panel title="Timeline">
+            <ol className="relative grid gap-4 border-l pl-5 text-sm">
+              {booking.history.map((event) => (
+                <li key={event.id} className="relative">
+                  <span className="absolute top-1.5 -left-[1.6rem] size-2.5 rounded-full bg-primary ring-4 ring-card" aria-hidden />
+                  <p className="font-medium">{titleCase(event.toStatus)}</p>
+                  <p className="text-xs text-muted-foreground">{formatWhen(event.createdAt)} · {event.actor?.name ?? "System"}</p>
+                  {event.reason ? <p className="mt-0.5 text-xs">{event.reason}</p> : null}
+                </li>
+              ))}
+            </ol>
+          </Panel>
+          <Link href={back} className="text-sm font-medium text-primary">← Back</Link>
+        </div>
+      </div>
     </div>
   );
+}
+
+function formatTime(value: Date) {
+  return new Intl.DateTimeFormat("en-IN", { timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(value));
 }
 
 function labelFor(status: BookingStatus) {
   if (status === "CHECKED_IN") return "Check in";
   if (status === "IN_PROGRESS") return "Start visit";
   if (status === "COMPLETED") return "Complete visit";
-  if (status === "CANCELLED") return "Cancel";
-  if (status === "REFUNDED") return "Mark refunded";
-  return status.replaceAll("_", " ").toLowerCase();
+  if (status === "CANCELLED") return "Cancel visit";
+  if (status === "CONFIRMED") return "Confirm";
+  return status;
 }

@@ -18,10 +18,10 @@ export function galleryItems(center: Pick<CenterProfile, "slug" | "name" | "gall
 }
 
 const AMENITIES = [
-  { title: "Digital reports", body: "PDF reports land in your MediScan inbox with optional doctor sharing." },
-  { title: "Parking & accessibility", body: "Ground-floor sample collection and wheelchair-friendly entrances at both branches." },
-  { title: "Corporate tie-ups", body: "Annual health camps, bulk invoicing, and dedicated relationship managers." },
-  { title: "Quality controls", body: "Daily QC runs and barcode tracking from draw to report release." },
+  { title: "Reports on your phone", body: "Download your report as a PDF from My reports. You can share it with your doctor." },
+  { title: "Easy access", body: "Ground-floor sample collection and wheelchair-friendly entry." },
+  { title: "Company health checkups", body: "Yearly health camps and checkups for company employees." },
+  { title: "Quality checks", body: "Machines are checked daily, and every sample has a barcode from collection to report." },
 ];
 
 export function centerAmenities(_center: CenterProfile) {

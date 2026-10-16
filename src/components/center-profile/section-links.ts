@@ -1,6 +1,6 @@
 export type CenterSectionLink = { href: string; label: string };
 
-export const CENTER_SECTION_LINKS: CenterSectionLink[] = [
+const CENTER_SECTION_LINKS: CenterSectionLink[] = [
   { href: "#about", label: "About" },
   { href: "#gallery", label: "Gallery" },
   { href: "#branches", label: "Branches" },

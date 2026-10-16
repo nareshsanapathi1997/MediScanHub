@@ -13,8 +13,8 @@ export default async function PatientInvoicesPage() {
   const invoices = actor.patientId ? await listInvoices({ ...actor, activeTenantId: null }) : [];
   return (
     <>
-      <PageHeader eyebrow="Billing" title="Invoices" description="Patient invoices on this demo use 0% GST. Subscription invoices belong to the center, not this page." />
-      {invoices.length === 0 ? <EmptyState title="No invoices" body="An invoice is issued when you create a booking." /> : invoices.map((invoice) => (
+      <PageHeader eyebrow="Payments" title="My bills" description="Bills for your bookings. Diagnostic tests are exempt from GST." />
+      {invoices.length === 0 ? <EmptyState title="No bills yet" body="An invoice is issued when you create a booking." /> : invoices.map((invoice) => (
         <article key={invoice.id} className="flex items-center justify-between rounded-2xl border bg-card p-4 text-sm">
           <div>
             <p className="font-medium">{invoice.number}</p>

@@ -24,6 +24,9 @@
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
@@ -55,7 +58,7 @@
   --card-foreground: oklch(0.23 0.03 230);
   --popover: oklch(0.995 0.004 170);
   --popover-foreground: oklch(0.23 0.03 230);
-  --primary: oklch(0.45 0.09 185);
+  --primary: oklch(0.47 0.1 200);
   --primary-foreground: oklch(0.985 0.01 170);
   --secondary: oklch(0.94 0.02 190);
   --secondary-foreground: oklch(0.28 0.04 210);
@@ -66,13 +69,16 @@
   --destructive: oklch(0.55 0.2 25);
   --border: oklch(0.89 0.015 200);
   --input: oklch(0.89 0.015 200);
-  --ring: oklch(0.55 0.09 185);
+  --ring: oklch(0.58 0.11 200);
   --chart-1: oklch(0.55 0.1 185);
   --chart-2: oklch(0.5 0.12 240);
   --chart-3: oklch(0.72 0.12 85);
   --chart-4: oklch(0.62 0.16 25);
   --chart-5: oklch(0.4 0.04 220);
   --radius: 0.9rem;
+  --success: oklch(0.56 0.12 155);
+  --warning: oklch(0.72 0.15 70);
+  --info: oklch(0.55 0.14 245);
   --sidebar: oklch(0.22 0.035 220);
   --sidebar-foreground: oklch(0.95 0.01 170);
   --sidebar-primary: oklch(0.72 0.11 180);
@@ -112,6 +118,9 @@
   --sidebar-primary: oklch(0.78 0.11 180);
   --sidebar-primary-foreground: oklch(0.16 0.03 220);
   --sidebar-accent: oklch(0.26 0.03 220);
+  --success: oklch(0.72 0.13 155);
+  --warning: oklch(0.8 0.14 75);
+  --info: oklch(0.72 0.12 245);
   --sidebar-accent-foreground: oklch(0.96 0.01 170);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.78 0.11 180);
@@ -154,11 +163,30 @@
   font-size: 0.875rem;
 }
 
+.field > label, .field { font-weight: 500; }
 .field input, .field select, .field textarea {
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   width: 100%;
-  border-radius: 0.5rem;
+  border-radius: 0.65rem;
   border: 1px solid var(--input);
-  background: var(--background);
-  padding: 0.4rem 0.7rem;
+  background: var(--card);
+  padding: 0.5rem 0.8rem;
+  font-weight: 400;
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 25%, transparent);
+}
+.field [aria-invalid="true"] {
+  border-color: var(--destructive);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 15%, transparent);
+}
+.surface {
+  border-radius: 1.1rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 4%, transparent), 0 8px 24px -16px color-mix(in oklch, var(--foreground) 18%, transparent);
 }

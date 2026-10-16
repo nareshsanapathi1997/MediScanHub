@@ -22,8 +22,8 @@ async function InsuranceBody() {
   const policies = await listInsurance(actor);
   return (
     <>
-      <PageHeader eyebrow="Coverage" title="Insurance & TPA" description="Store policy details for the center desk. Claims are recorded manually until a TPA adapter is configured." />
-      {policies.length === 0 ? <EmptyState title="No policies" body="Add your insurer or third-party administrator details." /> : policies.map((policy) => (
+      <PageHeader eyebrow="Coverage" title="Health insurance" description="Save your health insurance policy. You can pick it at checkout, and the center will raise the claim with your insurer or TPA." />
+      {policies.length === 0 ? <EmptyState title="No policy added" body="Add your insurer or third-party administrator details." /> : policies.map((policy) => (
         <article key={policy.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
           <span>{policy.provider} · {policy.policyNumber}{policy.tpaName ? ` · TPA ${policy.tpaName}` : ""}{policy.validUntil ? ` · until ${formatDate(policy.validUntil)}` : ""}</span>
           <form action={deleteInsuranceAction}>

@@ -23,7 +23,7 @@ async function IntegrationsBody() {
   const messages = await listIntegrationMessages(actor);
   return (
     <>
-      <PageHeader eyebrow="Interop" title="HL7, FHIR, ABDM & PACS" description="Outbound messages are queued for your interface engine. Configure PACS_ENDPOINT and ABDM_HIP_ID in the environment for live sends." />
+      <PageHeader eyebrow="Interop" title="Connections (HL7, FHIR, ABDM, PACS)" description="Messages waiting to be sent to other hospital systems. Your IT team sets up the live connection." />
       {messages.length === 0 ? <EmptyState title="No messages yet" body="Send HL7/FHIR from a booking detail form or transmit imaging studies from the imaging desk." /> : (
         <ul className="grid gap-2 text-sm">
           {messages.map((msg) => (

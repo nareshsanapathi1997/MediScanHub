@@ -22,7 +22,7 @@ async function RemindersBody() {
   const reminderNotices = notices.filter((n) => n.templateKey === "booking_reminder");
   return (
     <>
-      <PageHeader eyebrow="Schedule" title="Upcoming & reminders" description="Visits in the next two weeks and reminder messages queued for delivery." />
+      <PageHeader eyebrow="Schedule" title="Upcoming visits" description="Your visits in the next 2 weeks. We send a reminder a day before." />
       <section className="grid gap-2">
         <h2 className="font-display text-xl">Visits</h2>
         {visits.length === 0 ? <EmptyState title="Nothing scheduled" body="Book a test to see upcoming visits here." action={<Link className="text-primary" href="/tests">Search tests</Link>} /> : visits.map((booking) => (

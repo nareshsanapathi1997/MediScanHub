@@ -5,6 +5,7 @@ import { formatDate, formatInr } from "@/lib/format";
 import { Gate, NeedTenant } from "@/components/guard";
 import { ConfirmForm } from "@/components/confirm-form";
 import { PageHeader, Stat, StatusPill } from "@/components/widgets";
+import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Subscription" };
 
@@ -39,11 +40,11 @@ async function SubscriptionBody() {
             <h2 className="font-display text-2xl">{plan.name}</h2>
             <p className="text-sm">{formatInr(plan.monthlyPricePaise)} / month · {formatInr(plan.annualPricePaise)} / year</p>
             <p className="text-sm text-muted-foreground">{plan.description}</p>
-            <form action={planAction} className="grid gap-2">
+            <ActionForm action={planAction} className="grid gap-2">
               <input type="hidden" name="tier" value={plan.tier} />
               <select name="cycle" className="h-10 rounded-lg border bg-background px-2"><option value="MONTHLY">Monthly</option><option value="ANNUAL">Annual</option></select>
               <button className="h-10 rounded-lg bg-primary text-sm text-primary-foreground" type="submit">Change to {plan.name}</button>
-            </form>
+            </ActionForm>
           </article>
         ))}
       </div>

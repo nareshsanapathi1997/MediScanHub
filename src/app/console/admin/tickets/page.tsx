@@ -15,7 +15,7 @@ export default async function TicketsPage() {
   const tickets = await listTickets(actor);
   return (
     <>
-      <PageHeader eyebrow="Support" title="Tickets" description="Public messages land on the support inbox. Center staff can also open tickets from their own account." />
+      <PageHeader eyebrow="Support" title="Support questions" description="Questions from patients, centers and the Contact page. Reply within 1 working day." />
       {tickets.length === 0 ? <p className="text-sm text-muted-foreground">The queue is empty.</p> : tickets.map((ticket) => (
         <article key={ticket.id} className="grid gap-2 rounded-2xl border bg-card p-4">
           <div className="flex items-center justify-between gap-2">

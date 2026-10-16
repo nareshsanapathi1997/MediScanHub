@@ -14,7 +14,7 @@ export default async function AuditPage() {
   const rows = await listAudit(actor);
   return (
     <>
-      <PageHeader eyebrow="Audit" title="Who touched a record" description="Views, edits, approvals, exports, and releases are written as they happen." />
+      <PageHeader eyebrow="Audit" title="Audit log" description="Who viewed, changed, approved, downloaded or released a record, and when." />
       <AuditTable rows={rows.map((row) => ({
         when: formatWhen(row.createdAt),
         actor: row.actor?.name ?? "System",

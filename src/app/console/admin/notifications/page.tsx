@@ -4,6 +4,7 @@ import { pumpNotificationsAction } from "@/server/actions";
 import { deny } from "@/components/guard";
 import { PageHeader, StatusPill } from "@/components/widgets";
 import { formatWhen } from "@/lib/format";
+import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Delivery" };
 
@@ -15,9 +16,9 @@ export default async function NotificationsPage() {
   return (
     <>
       <PageHeader eyebrow="Delivery" title="Notification health" description="The worker sends queued email, WhatsApp, and SMS through the configured provider. Local mode records them without calling Meta or an SMTP server. Reminders for the next 24 hours are queued when you run the worker." />
-      <form action={pumpNotificationsAction}>
+      <ActionForm action={pumpNotificationsAction}>
         <button className="h-10 rounded-lg bg-primary px-4 text-sm text-primary-foreground" type="submit">Run delivery worker</button>
-      </form>
+      </ActionForm>
       <div className="flex flex-wrap gap-2">
         {health.grouped.map((row) => <StatusPill key={`${row.channel}-${row.status}`} value={`${row.channel} ${row.status} ${row._count}`} />)}
       </div>

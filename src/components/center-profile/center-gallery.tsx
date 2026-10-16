@@ -11,7 +11,7 @@ export function CenterGallery({ center }: { center: CenterProfile }) {
       <SectionHeading
         eyebrow="Our facility"
         title="Inside the center"
-        description="Sample photography for this demonstration profile. Owners can replace these with real branch photos from the org console."
+        description="Demo pictures. Center owners can add real photos of their branches."
       />
       <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {items.map(({ url, caption }) => (

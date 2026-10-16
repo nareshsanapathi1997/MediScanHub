@@ -12,7 +12,7 @@ import { assertPermission } from "@/domain/actor";
 
 type Db = Tx;
 
-export async function activeSubscription(db: Db, tenantId: string) {
+async function activeSubscription(db: Db, tenantId: string) {
   return db.subscription.findFirst({
     where: { tenantId, status: { in: ["TRIALING", "ACTIVE"] } },
     include: { plan: true },
@@ -49,14 +49,6 @@ export async function assertCapacity(db: Db, tenantId: string, kind: "branch" | 
 
 export async function listPlans() {
   return prismaPrivileged.subscriptionPlan.findMany({ where: { active: true }, orderBy: { monthlyPricePaise: "asc" } });
-}
-
-export async function getTenantSubscription(tenantId: string) {
-  return prismaPrivileged.subscription.findFirst({
-    where: { tenantId },
-    include: { plan: true, invoices: { orderBy: { issuedAt: "desc" }, take: 6 } },
-    orderBy: { createdAt: "desc" },
-  });
 }
 
 export async function ensureTrial(tenantId: string, planTier = "STARTER") {

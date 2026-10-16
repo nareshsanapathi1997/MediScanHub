@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Outfit } from "next/font/google";
 import "./globals.css";
+import { cookies } from "next/headers";
 import { Providers } from "@/components/providers";
 
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
@@ -15,11 +16,12 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const flash = (await cookies()).get("ms_flash")?.value;
   return (
     <html lang="en" className={`${outfit.variable} ${fraunces.variable} h-full`} suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground antialiased">
-        <Providers>{children}</Providers>
+        <Providers flash={flash}>{children}</Providers>
       </body>
     </html>
   );

@@ -11,14 +11,6 @@ export type OutboundMessage = {
 
 const delivered: OutboundMessage[] = [];
 
-export function mockOutbox() {
-  return delivered;
-}
-
-export function clearMockOutbox() {
-  delivered.length = 0;
-}
-
 async function sendEmail(message: OutboundMessage) {
   const env = getEnv();
   if (env.EMAIL_PROVIDER === "mock" || env.NOTIFICATION_PROVIDER === "mock") {

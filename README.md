@@ -12,16 +12,15 @@ PostgreSQL 16 is required. `docker compose up -d` starts one, or use a local clu
 
 ```bash
 cp .env.example .env
-cp .env.example .env.migrate
 cp .env.example .env.test
-# Use mediscan_hub in .env / .env.migrate and mediscan_test in .env.test (see .env.example comments).
+# Use mediscan_hub in .env and mediscan_test in .env.test (see .env.example comments).
 npm install
 npm run db:ensure
 npm run db:setup
 npm run dev
 ```
 
-`npm run db:ensure` creates `mediscan_hub` and `mediscan_test` if missing and applies `scripts/bootstrap-local.sql` to both. `npm run db:setup` runs migrations and seed via `.env.migrate`.
+`npm run db:ensure` creates `mediscan_hub` and `mediscan_test` if missing and applies `scripts/bootstrap-local.sql` to both. `npm run db:setup` runs migrations and seed using `.env`.
 
 Country, state, and city dropdowns on registration and center onboarding come from master tables populated from [dr5hn/countries-states-cities-database](https://github.com/dr5hn/countries-states-cities-database). After migrations:
 
@@ -34,7 +33,7 @@ Repeat `geo:import` against `mediscan_test` if tests need populated geo data. Un
 
 Open [http://127.0.0.1:43123](http://127.0.0.1:43123).
 
-`db:setup` migrates and seeds with the owner role in `.env.migrate`. The Next.js process must use `.env`, whose `DATABASE_URL` is `mediscan_app` and cannot bypass row-level security. If your shell already exported `DATABASE_URL`, unset it before `npm run dev`.
+`db:setup` migrates and seeds with `DATABASE_URL` from `.env`. If your shell already exported `DATABASE_URL`, unset it before `npm run dev`.
 
 Create `mediscan_test` before tests. `npm test` migrates and reseeds that database.
 

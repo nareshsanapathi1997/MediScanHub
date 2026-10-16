@@ -22,7 +22,7 @@ async function SupportBody() {
   const tickets = await listPatientTickets(actor);
   return (
     <>
-      <PageHeader eyebrow="Help" title="Support tickets" description="Ask about appointments or billing. Do not paste test results in this form." />
+      <PageHeader eyebrow="Help" title="Help" description="Ask us about bookings, payments or reports. We reply within 1 working day. Please do not type your test results here." />
       <FormBox action={patientTicketAction} submit="Open ticket">
         <label className="field">Subject<input name="subject" required /></label>
         <label className="field">Message<textarea name="body" required rows={4} /></label>
@@ -34,7 +34,7 @@ async function SupportBody() {
           </select>
         </label>
       </FormBox>
-      {tickets.length === 0 ? <EmptyState title="No tickets" body="Your requests to the desk appear here with their status." /> : tickets.map((ticket) => (
+      {tickets.length === 0 ? <EmptyState title="No questions yet" body="Your requests to the desk appear here with their status." /> : tickets.map((ticket) => (
         <article key={ticket.id} className="flex items-center justify-between rounded-xl border px-3 py-2 text-sm">
           <span>{ticket.subject} · {formatWhen(ticket.createdAt)}</span>
           <StatusPill value={ticket.status} />

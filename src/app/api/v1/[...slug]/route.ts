@@ -30,13 +30,18 @@ import { createTicket, decideTenant, exportBookingsCsv, exportPatientData, platf
 import { changePlan, listPlans, refreshSubscriptionStates, subscriptionUsage } from "@/lib/services/subscription";
 import { enqueueBookingReminders, processNotificationQueue } from "@/lib/services/notify";
 import { transitionStudy } from "@/lib/services/imaging";
-import { readReportLink } from "@/lib/adapters/storage";
+import { readFileLink, readReportLink } from "@/lib/adapters/storage";
+import { readReportFile, removeReportFile, signedReportFileLink, signedReportPdfPath, uploadReportFile } from "@/lib/services/report-files";
 import { getEnv } from "@/lib/env";
 import type { Actor } from "@/domain/actor";
-import type { BookingStatus, ReportStatus, SampleStatus, StudyStatus } from "@prisma/client";
+import type { BookingStatus, ReportFileKind, ReportStatus, SampleStatus, StudyStatus } from "@prisma/client";
 
 const csrfExempt = new Set(["auth/login", "auth/register", "auth/forgot", "auth/recover", "auth/logout", "payments/webhook", "notifications/process", "centers/register"]);
 const originExempt = new Set(["payments/webhook", "notifications/process"]);
+
+function redirectTo(location: string) {
+  return new Response(null, { status: 302, headers: { Location: location, "Cache-Control": "no-store" } });
+}
 
 function requireActor(actor: Actor | null): Actor {
   if (!actor) throw new DomainError("UNAUTHENTICATED", "Sign in required", 401);
@@ -301,12 +306,46 @@ async function dispatch(req: Request, slug: string, session: { sessionId: string
       headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${file.filename}"` },
     });
   }
+  // Browser links go through /open, which checks access and redirects to a five-minute signed URL.
+  if (req.method === "GET" && slug.match(/^reports\/[^/]+\/open$/)) {
+    return redirectTo(await signedReportPdfPath(requireActor(actor), slug.split("/")[1]!));
+  }
+  if (req.method === "GET" && slug.match(/^report-files\/[^/]+\/open$/)) {
+    return redirectTo(await signedReportFileLink(requireActor(actor), slug.split("/")[1]!));
+  }
+  if (req.method === "POST" && slug.match(/^reports\/[^/]+\/files$/)) {
+    const form = await req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new DomainError("UPLOAD", "Attach a file", 400);
+    const row = await uploadReportFile(requireActor(actor), {
+      reportId: slug.split("/")[1]!,
+      kind: String(form.get("kind") ?? "OTHER") as ReportFileKind,
+      bookingItemId: form.get("bookingItemId") ? String(form.get("bookingItemId")) : null,
+      fileName: file.name,
+      bytes: Buffer.from(await file.arrayBuffer()),
+    });
+    return ok({ id: row.id, fileName: row.fileName, sizeBytes: row.sizeBytes }, 201);
+  }
+  if (req.method === "DELETE" && slug.match(/^report-files\/[^/]+$/)) {
+    await removeReportFile(requireActor(actor), slug.split("/")[1]!);
+    return ok({ removed: true });
+  }
   if (req.method === "GET" && slug === "files/signed") {
+    const fileToken = q.get("file");
+    if (fileToken) {
+      const link = readFileLink(fileToken);
+      const file = await readReportFile(requireActor(actor), link.fileId);
+      return new Response(new Uint8Array(file.bytes), {
+        headers: { "Content-Type": file.contentType, "Content-Disposition": `inline; filename="${file.fileName.replace(/"/g, "")}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
+      });
+    }
     const token = q.get("token");
     if (!token) throw new DomainError("LINK_EXPIRED", "Missing file token", 401);
     const link = readReportLink(token);
     const file = await readReportPdf(requireActor(actor), link.reportId, link.version);
-    return new Response(new Uint8Array(file.bytes), { headers: { "Content-Type": "application/pdf" } });
+    return new Response(new Uint8Array(file.bytes), {
+      headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${file.filename}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
+    });
   }
   if (req.method === "GET" && slug === "subscriptions") {
     const user = requireActor(actor);

@@ -22,8 +22,8 @@ async function ChronicBody() {
   const rows = await listChronicConditions(actor);
   return (
     <>
-      <PageHeader eyebrow="Chronic care" title="Long-term conditions" description="Share context with centers when you book. This is not a treatment plan." />
-      {rows.length === 0 ? <EmptyState title="No conditions listed" body="Add diabetes, hypertension, or other ongoing conditions you want centers to see in notes." /> : rows.map((row) => (
+      <PageHeader eyebrow="Health history" title="Long-term conditions" description="Add conditions like diabetes, BP or thyroid. Centers see this when you book so they can guide you better." />
+      {rows.length === 0 ? <EmptyState title="No conditions added" body="Add diabetes, hypertension, or other ongoing conditions you want centers to see in notes." /> : rows.map((row) => (
         <article key={row.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
           <span>{row.condition}{row.since ? ` · since ${formatDate(row.since)}` : ""}{row.notes ? ` · ${row.notes}` : ""}</span>
           <form action={deleteChronicAction}>

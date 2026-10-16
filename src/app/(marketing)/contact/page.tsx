@@ -1,5 +1,6 @@
 import { contactAction } from "@/server/actions";
 import { FormBox } from "@/components/form-box";
+import { SchemaForm } from "@/components/schema-form";
 import { PageHeader } from "@/components/widgets";
 import { currentSession } from "@/server/session";
 
@@ -9,17 +10,26 @@ export default async function ContactPage() {
   const session = await currentSession();
   return (
     <main className="mx-auto grid max-w-xl gap-6 px-4 py-10">
-      <PageHeader eyebrow="Contact" title="Write to the desk" description="Signed-in users open a ticket on their account. Everyone else reaches the support inbox. Do not include report values in this form." />
-      <FormBox action={contactAction} submit="Send message" success="Message received. A person will reply from the support queue.">
-        {session ? null : (
-          <>
-            <label className="field">Name<input name="name" required /></label>
-            <label className="field">Email<input name="email" type="email" required /></label>
-          </>
-        )}
-        <label className="field">Subject<input name="subject" required /></label>
-        <label className="field">Message<textarea name="body" required rows={5} /></label>
-      </FormBox>
+      <PageHeader eyebrow="Contact" title="Contact us" description="Write to us about bookings, payments or reports. We reply within 1 working day. Please do not type your test results here." />
+      {session ? (
+        <FormBox action={contactAction} submit="Send message" success="Thank you. We have your message and will reply within 1 working day.">
+          <label className="field">Subject<input name="subject" required minLength={3} /></label>
+          <label className="field">Message<textarea name="body" required minLength={10} rows={5} /></label>
+        </FormBox>
+      ) : (
+        <SchemaForm
+          schema="contact"
+          action={contactAction}
+          submit="Send message"
+          success="Thank you. We have your message and will reply within 1 working day."
+          fields={[
+            { name: "name", label: "Name", autoComplete: "name" },
+            { name: "email", label: "Email", type: "email", autoComplete: "email" },
+            { name: "subject", label: "Subject" },
+            { name: "body", label: "Message", type: "textarea", rows: 5 },
+          ]}
+        />
+      )}
     </main>
   );
 }

@@ -22,8 +22,8 @@ async function FamilyBody() {
   const dependents = await listDependents(actor);
   return (
     <>
-      <PageHeader eyebrow="Family" title="Dependents" description="Book tests on behalf of family members from checkout." />
-      {dependents.length === 0 ? <EmptyState title="No dependents" body="Add a spouse, child, or parent to select them during booking." /> : dependents.map((dep) => (
+      <PageHeader eyebrow="Family" title="Family members" description="Add your parents, spouse or children. You can then book tests for them from checkout." />
+      {dependents.length === 0 ? <EmptyState title="No family members added" body="Add a spouse, child, or parent to select them during booking." /> : dependents.map((dep) => (
         <article key={dep.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm">
           <span>{dep.name} · {dep.relation} · {formatDate(dep.dateOfBirth)}</span>
           <form action={deleteDependentAction}>

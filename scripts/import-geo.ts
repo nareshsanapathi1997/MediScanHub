@@ -3,11 +3,10 @@ import path from "path";
 import { PrismaClient } from "@prisma/client";
 import { config } from "dotenv";
 
-config({ path: ".env.migrate" });
 config({ path: ".env" });
 
 const url = process.env.DATABASE_URL;
-if (!url) throw new Error("DATABASE_URL is required (use .env.migrate)");
+if (!url) throw new Error("DATABASE_URL is required in .env");
 
 const prisma = new PrismaClient({ datasources: { db: { url } } });
 

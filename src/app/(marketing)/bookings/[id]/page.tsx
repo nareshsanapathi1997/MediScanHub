@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { currentSession } from "@/server/session";
 import { getBooking } from "@/lib/services/booking";
 import { listSlots } from "@/lib/services/catalog";
+import { listBookingReports } from "@/lib/services/report-files";
 import { BookingView } from "@/components/booking-view";
 import { DomainError } from "@/lib/errors";
 
@@ -25,6 +26,7 @@ export default async function BookingConfirmationPage({ params, searchParams }: 
     <main className="mx-auto max-w-3xl px-4 py-10">
       {query.paid ? <p className="mb-4 rounded-lg bg-primary/10 px-3 py-2 text-sm">Payment captured. The visit is confirmed and the lab or imaging order is open.</p> : null}
       <BookingView
+          reports={await listBookingReports(session.actor, booking)}
         booking={booking}
         actor={session.actor}
         slots={slots}

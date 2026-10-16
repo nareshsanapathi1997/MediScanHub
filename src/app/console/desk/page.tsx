@@ -34,8 +34,8 @@ async function DeskBody() {
   const due = bookings.rows.filter((booking) => new Date(booking.scheduledAt).toDateString() === today || ["PENDING", "CONFIRMED", "CHECKED_IN"].includes(booking.status));
   return (
     <>
-      <PageHeader eyebrow="Reception" title="Front desk" description="Walk-ins are confirmed immediately and open a lab or imaging order. Online visits stay pending until payment is captured." />
-      {due.length === 0 ? <EmptyState title="The board is clear" body="No pending or today's visits in your branches." /> : (
+      <PageHeader eyebrow="Reception" title="Front desk" description="Check in patients and add walk-ins. Walk-in bookings are confirmed at once. Online bookings stay pending until they are paid." />
+      {due.length === 0 ? <EmptyState title="No visits waiting" body="There are no pending visits or visits today at your branches. Add a walk-in patient below." /> : (
         <div className="grid gap-2">
           {due.map((booking) => (
             <Link key={booking.id} href={`/console/org/bookings/${booking.id}`} className="flex items-center justify-between rounded-xl border bg-card px-3 py-2 text-sm">

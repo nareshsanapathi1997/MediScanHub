@@ -2,7 +2,7 @@ import { prismaPrivileged } from "@/lib/db";
 import { withScope } from "@/lib/scope";
 import { DomainError } from "@/lib/errors";
 import { writeAudit } from "@/lib/audit";
-import { getObject, putObject, signReportLink } from "@/lib/adapters/storage";
+import { getObject, putObject } from "@/lib/adapters/storage";
 import { renderReportPdf } from "@/lib/pdf";
 import { sha256 } from "@/lib/crypto";
 import { enqueue } from "@/lib/services/notify";
@@ -65,7 +65,7 @@ export async function getSample(actor: Actor, id: string) {
         service: { include: { parameters: { orderBy: { position: "asc" }, include: { ranges: true } } } },
         results: true,
         assignee: { select: { id: true, name: true } },
-        labOrder: { include: { booking: { include: { patient: true, branch: true } } } },
+        labOrder: { include: { booking: { include: { patient: { include: { user: { select: { name: true } } } }, branch: true } }, reports: { select: { id: true, status: true } } } },
       },
     }),
   );
@@ -84,6 +84,11 @@ export async function transitionSample(actor: Actor, sampleId: string, to: Sampl
   assertTransition(SAMPLE_TRANSITIONS, sample.status, to, "Sample");
   if ((to === "REJECTED" || to === "RECOLLECTION") && !reason?.trim()) {
     throw new DomainError("REASON", "A reason is required when a sample is rejected", 400);
+  }
+  if (to === "RESULTED") {
+    const entered = new Set(sample.results.filter((result) => result.status !== "DRAFT").map((result) => result.parameterId));
+    const missing = sample.service.parameters.filter((parameter) => !entered.has(parameter.id));
+    if (missing.length > 0) throw new DomainError("RESULT", `Enter ${missing.map((item) => item.name).join(", ")} before marking the sample resulted`, 409);
   }
   return withScope(scopeOf(actor), async (tx) => {
     const updated = await tx.sample.update({
@@ -152,6 +157,8 @@ export async function enterResults(
   if (!["PROCESSING", "RESULTED"].includes(sample.status)) {
     throw new DomainError("INVALID_TRANSITION", "Receive and start processing the sample before entering results", 409);
   }
+  const locked = await withScope(scopeOf(actor), (tx) => tx.medicalReport.findFirst({ where: { tenantId: sample.tenantId, labOrderId: sample.labOrderId, status: { in: ["VERIFIED", "APPROVED", "RELEASED"] } }, select: { status: true } }));
+  if (locked) throw new DomainError("REPORT_LOCKED", `The report is ${locked.status.toLowerCase()}. Send it back or amend it before changing results.`, 409);
   const patient = sample.labOrder.booking.patient;
   const age = ageYears(patient.dateOfBirth);
   return withScope(scopeOf(actor), async (tx) => {
@@ -203,7 +210,8 @@ async function loadReport(actor: Actor, id: string) {
   if (actor.patientId) {
     const own = await withScope({ userId: actor.userId, patientId: actor.patientId }, (tx) =>
       tx.medicalReport.findFirst({
-        where: { id, booking: { patientId: actor.patientId! } },
+        // Patients only ever see released reports; an unreleased one is "not found", same as under RLS.
+        where: { id, booking: { patientId: actor.patientId! }, status: { in: ["RELEASED", "AMENDED"] } },
         include: reportInclude,
       }),
     );
@@ -222,8 +230,9 @@ async function loadReport(actor: Actor, id: string) {
 const reportInclude = {
   approvals: { orderBy: { createdAt: "asc" as const }, include: { approver: { select: { name: true } } } },
   versions: { orderBy: { version: "desc" as const } },
+  files: { where: { removedAt: null }, orderBy: { createdAt: "asc" as const }, include: { bookingItem: { select: { name: true } } } },
   booking: { include: { patient: { include: { user: { select: userPublicSelect } } }, branch: true, tenant: true, items: true } },
-  labOrder: { include: { samples: { include: { service: true, results: { include: { parameter: { include: { ranges: true } } } } } } } },
+  labOrder: { include: { samples: { include: { service: { include: { parameters: { select: { id: true, name: true } } } }, results: { include: { parameter: { include: { ranges: true } } } } } } } },
   imagingOrder: { include: { studies: { include: { service: true } } } },
 };
 
@@ -287,24 +296,43 @@ export async function transitionReport(actor: Actor, reportId: string, to: Repor
     // Pathologists may approve imaging in this deployment because they hold reports.approve.
   }
   assertTransition(REPORT_TRANSITIONS, report.status, to, "Report");
-  if (to === "RELEASED") {
+  if ((to === "REJECTED" || to === "AMENDED") && !comment?.trim()) {
+    throw new DomainError("REASON", to === "REJECTED" ? "Say why the report is sent back" : "Describe the amendment", 400);
+  }
+  const clinicalGate = to === "VERIFIED" || to === "APPROVED" || to === "RELEASED";
+  if (clinicalGate) {
     const samples = report.labOrder?.samples ?? [];
-    if (samples.some((sample) => sample.status !== "RESULTED")) throw new DomainError("REPORT", "All samples must be resulted before release", 409);
+    if (report.labOrder && samples.length === 0) throw new DomainError("REPORT", "This report has no samples with results", 409);
+    if (samples.some((sample) => sample.status !== "RESULTED")) throw new DomainError("REPORT", "All samples must be resulted first", 409);
     for (const sample of samples) {
       const entered = new Set(sample.results.filter((result) => result.status !== "DRAFT").map((result) => result.parameterId));
-      const required = sample.results.length === 0;
-      if (required) throw new DomainError("REPORT", `Enter results for ${sample.service.name} before release`, 409);
-      if (sample.results.some((result) => result.status === "DRAFT" || !entered.has(result.parameterId))) {
-        throw new DomainError("REPORT", "Unapproved or incomplete results cannot be released", 409);
+      const missing = sample.service.parameters.filter((parameter) => !entered.has(parameter.id));
+      if (sample.results.length === 0 || missing.length > 0) {
+        throw new DomainError("REPORT", `Enter every parameter for ${sample.service.name} first${missing.length ? ` (missing: ${missing.map((item) => item.name).join(", ")})` : ""}`, 409);
       }
     }
+    if (report.imagingOrder && !report.labOrder) {
+      const studies = report.imagingOrder.studies.filter((study) => study.status !== "CANCELLED");
+      if (studies.length === 0 || studies.some((study) => study.status === "SCHEDULED")) throw new DomainError("REPORT", "Acquire every imaging study first", 409);
+    }
+  }
+  // Maker-checker: whoever entered results cannot verify or approve the same report.
+  if (to === "VERIFIED" || to === "APPROVED") {
+    const enteredBy = new Set((report.labOrder?.samples ?? []).flatMap((sample) => sample.results.map((result) => result.enteredById)).filter(Boolean));
+    if (enteredBy.has(actor.userId)) throw new DomainError("SEGREGATION", "A different reviewer must sign off results you entered", 403);
+  }
+  if (to === "RELEASED" && !report.approvals.some((approval) => approval.decision === "APPROVED" && approval.createdAt > (report.releasedAt ?? new Date(0)))) {
+    throw new DomainError("REPORT", "An authorized approval is required before release", 409);
   }
   const updated = await withScope({ tenantId: report.tenantId, userId: actor.userId }, async (tx) => {
     const nextVersion = to === "RELEASED" ? report.currentVersion + 1 : report.currentVersion;
-    const row = await tx.medicalReport.update({
-      where: { id: report.id },
+    // Compare-and-set on the validated status so concurrent approvals or releases apply once.
+    const claimed = await tx.medicalReport.updateMany({
+      where: { id: report.id, tenantId: report.tenantId, status: report.status, currentVersion: report.currentVersion },
       data: { status: to, currentVersion: nextVersion, releasedAt: to === "RELEASED" ? new Date() : report.releasedAt },
     });
+    if (claimed.count !== 1) throw new DomainError("CONFLICT", "This report was changed by someone else. Reload and try again.", 409);
+    const row = await tx.medicalReport.findUniqueOrThrow({ where: { id: report.id } });
     await tx.reportApproval.create({ data: { tenantId: report.tenantId, reportId: report.id, approverId: actor.userId, decision: to, comment } });
     await writeAudit(tx, { tenantId: report.tenantId, actorId: actor.userId, action: to === "RELEASED" ? "RELEASE" : to === "APPROVED" ? "APPROVE" : "UPDATE", entityType: "MedicalReport", entityId: report.id, metadata: { to } });
     return row;
@@ -375,10 +403,4 @@ export async function readReportPdf(actor: Actor, reportId: string, version?: nu
     writeAudit(tx, { tenantId: report.tenantId, actorId: actor.userId, action: "VIEW", entityType: "MedicalReport", entityId: report.id, metadata: { version: chosen.version } }),
   );
   return { bytes, filename: `${report.booking.publicCode}-v${chosen.version}.pdf`, version: chosen.version };
-}
-
-export async function signedReportLink(actor: Actor, reportId: string) {
-  const { version } = await readReportPdf(actor, reportId);
-  const token = signReportLink(reportId, version, 300);
-  return { url: `${getEnv().APP_URL}/api/v1/files/signed?token=${encodeURIComponent(token)}`, expiresInSeconds: 300 };
 }

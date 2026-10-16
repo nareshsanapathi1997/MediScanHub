@@ -5,10 +5,11 @@ export const metadata = { title: "Privacy" };
 export default function PrivacyPage() {
   return (
     <main className="mx-auto grid max-w-3xl gap-4 px-4 py-10 text-sm leading-6">
-      <PageHeader eyebrow="Privacy" title="What this application stores" />
-      <p>Account data includes name, email, phone, and a password hash. Clinical data includes bookings, samples, results, and released reports for the center that performed the service. Payment provider secrets stay on the server. Files sit in private storage and are opened with a short-lived check of your session.</p>
-      <p>You can export your patient record from Account, and you can request deletion. Deletion anonymizes your login and contact fields and revokes sessions. Clinical rows are retained so the center can meet record-keeping duties. That split is an engineering choice and still needs counsel under the DPDP Act and applicable clinical establishment rules.</p>
-      <p>Audit logs record views, edits, approvals, exports, and releases. Demonstration data is synthetic and labeled. Do not enter real patient information into a local demo.</p>
+      <PageHeader eyebrow="Privacy" title="Privacy" />
+      <p>We store your name, email, mobile number and a protected (hashed) password. For your bookings we store the tests, samples, results and reports of the center that did the test.</p>
+      <p>Your reports and uploaded files are kept in private storage. A download link works only after you sign in and only for 5 minutes. Messages on SMS, email or WhatsApp never contain your results.</p>
+      <p>You can download a copy of your data from Account and ask us to delete your account. When you delete it, we remove your login and contact details. The center may keep your test records as required by law.</p>
+      <p>Every view, change, approval, release and download of a report is recorded in an audit log. All data on this demo is synthetic (made up). Do not enter real patient details here.</p>
     </main>
   );
 }

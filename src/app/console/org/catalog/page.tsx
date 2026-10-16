@@ -23,7 +23,7 @@ async function CatalogBody() {
   const [services, categories] = await Promise.all([listTenantCatalog(actor), listCategories()]);
   return (
     <>
-      <PageHeader eyebrow="Catalog" title="Tests and studies" description="Publishing makes a service searchable. Branch prices and preparation stay with the service." />
+      <PageHeader eyebrow="Catalog" title="Tests and studies" description="Add tests and scans. Turn on Publish so patients can find and book them." />
       <div className="grid gap-3">
         {services.map((service) => (
           <article key={service.id} className="rounded-2xl border bg-card p-4">

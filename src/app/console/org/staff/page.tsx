@@ -27,7 +27,7 @@ async function StaffBody() {
   const [staff, branches] = await Promise.all([listStaff(actor), tenantBranches(actor)]);
   return (
     <>
-      <PageHeader eyebrow="People" title="Staff and invitations" description="An invitation adds one role at one center. Branch-scoped roles only see the branch you pick." />
+      <PageHeader eyebrow="People" title="Staff" description="Invite staff by email and choose their role. Branch staff see only the branch you pick." />
       <div className="grid gap-2">
         {staff.map((member) => (
           <p key={member.id} className="rounded-xl border bg-card px-3 py-2 text-sm">{member.user.name} · {member.user.email} · {ROLE_NAMES[member.role.key as keyof typeof ROLE_NAMES] ?? member.role.name}</p>

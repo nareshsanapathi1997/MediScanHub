@@ -24,7 +24,7 @@ async function PackagesBody() {
   const [packages, services] = await Promise.all([tenantPackages(actor), listTenantCatalog(actor)]);
   return (
     <>
-      <PageHeader eyebrow="Packages" title="Bundled tests" description="A package has its own price. The included tests still open samples or imaging studies." />
+      <PageHeader eyebrow="Packages" title="Health packages" description="Group tests into a package with one price, like a Full Body Checkup or Diabetes Care package." />
       {packages.map((pkg) => (
         <article key={pkg.id} className="rounded-2xl border bg-card p-4">
           <h2 className="font-display text-2xl">{pkg.name} · {formatInr(pkg.pricePaise)}</h2>

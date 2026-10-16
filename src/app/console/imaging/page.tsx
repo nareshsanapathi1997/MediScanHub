@@ -8,6 +8,7 @@ import { hasPermission } from "@/domain/actor";
 import { Gate, NeedTenant } from "@/components/guard";
 import { FormBox } from "@/components/form-box";
 import { PageHeader, StatusPill, EmptyState } from "@/components/widgets";
+import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Imaging" };
 
@@ -33,8 +34,8 @@ async function ImagingBody() {
   ]);
   return (
     <>
-      <PageHeader eyebrow="Imaging" title="Studies and rooms" description="Transmit studies to a configured PACS endpoint or queue them for your interface engine." />
-      {orders.length === 0 ? <EmptyState title="No imaging orders" body="A confirmed booking that includes an imaging service opens an order." /> : orders.map((order) => (
+      <PageHeader eyebrow="Imaging" title="Scans" description="X-ray, ultrasound, CT and MRI orders. Mark each scan done, then open the report to upload images and the typed report." />
+      {orders.length === 0 ? <EmptyState title="No scans booked" body="Scans appear here when a patient books and pays for an X-ray, ultrasound, CT or MRI." /> : orders.map((order) => (
         <article key={order.id} className="grid gap-2 rounded-2xl border bg-card p-4">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-2xl">{order.booking.publicCode}</h2>
@@ -53,30 +54,30 @@ async function ImagingBody() {
                   </form>
                 ) : null}
                 {canPerform && order.status === "SCHEDULED" ? (
-                  <form action={imagingAction}>
+                  <ActionForm action={imagingAction}>
                     <input type="hidden" name="mode" value="checkin" />
                     <input type="hidden" name="orderId" value={order.id} />
                     <button className="h-9 rounded-lg border px-3" type="submit">Check in</button>
-                  </form>
+                  </ActionForm>
                 ) : null}
                 {canPerform && study.status === "SCHEDULED" ? (
-                  <form action={imagingAction}>
+                  <ActionForm action={imagingAction}>
                     <input type="hidden" name="studyId" value={study.id} />
                     <input type="hidden" name="to" value="ACQUIRED" />
                     <button className="h-9 rounded-lg border px-3" type="submit">Mark acquired</button>
-                  </form>
+                  </ActionForm>
                 ) : null}
                 {hasPermission(actor, "imaging.report", actor.activeTenantId) && study.status === "ACQUIRED" ? (
-                  <form action={imagingAction}>
+                  <ActionForm action={imagingAction}>
                     <input type="hidden" name="studyId" value={study.id} />
                     <input type="hidden" name="to" value="REPORTED" />
                     <button className="h-9 rounded-lg border px-3" type="submit">Mark reported</button>
-                  </form>
+                  </ActionForm>
                 ) : null}
               </div>
             </div>
           ))}
-          {order.reports.map((report) => <a key={report.id} className="text-sm text-primary" href={`/console/lab/reports/${report.id}`}>Report {report.status}</a>)}
+          {order.reports.map((report) => <a key={report.id} className="text-sm text-primary" href={`/console/lab/reports/${report.id}`}>Open report and upload files ({report.status.toLowerCase()})</a>)}
         </article>
       ))}
       <section className="grid gap-2">

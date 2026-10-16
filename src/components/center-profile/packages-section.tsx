@@ -12,7 +12,7 @@ export function PackagesSection({ center, state }: { center: CenterProfile; stat
   const servicesById = new Map(center.services.map((service) => [service.id, service]));
   return (
     <section id="packages" className="mx-auto grid w-full max-w-6xl scroll-mt-24 gap-6 px-4">
-      <SectionHeading eyebrow="Health packages" title="Bundled checkups" description="Curated bundles that group several tests into a single booking. Packages you add show in Your booking below." />
+      <SectionHeading eyebrow="Health packages" title="Health checkup packages" description="Several tests at one price. Packages you add appear in “Your booking” below." />
       <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {center.packages.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} state={state} servicesById={servicesById} />)}
       </ul>

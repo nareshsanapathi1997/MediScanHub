@@ -4,6 +4,7 @@ import { branchAction, hoursAction } from "@/server/actions";
 import { Gate, NeedTenant } from "@/components/guard";
 import { FormBox } from "@/components/form-box";
 import { PageHeader, EmptyState } from "@/components/widgets";
+import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Branches" };
 
@@ -23,11 +24,11 @@ async function BranchesBody() {
   const branches = await tenantBranches(actor);
   return (
     <>
-      <PageHeader eyebrow="Network" title="Branches" description="A new branch counts against the subscription limit. Hours are local wall-clock times for the desk." />
+      <PageHeader eyebrow="Network" title="Branches" description="Each branch counts towards your plan limit. Opening hours are in IST." />
       {branches.length === 0 ? <EmptyState title="No branches yet" body="Add the first collection site. The public directory shows it after the center is active." /> : (
         <div className="grid gap-3">
           {branches.map((branch) => (
-            <form key={branch.id} action={hoursAction} className="grid gap-2 rounded-2xl border bg-card p-4 sm:grid-cols-[1fr_auto_auto_auto]">
+            <ActionForm key={branch.id} action={hoursAction} className="grid gap-2 rounded-2xl border bg-card p-4 sm:grid-cols-[1fr_auto_auto_auto]">
               <div>
                 <h2 className="font-display text-2xl">{branch.name}</h2>
                 <p className="text-sm text-muted-foreground">{branch.address}, {branch.city} · {branch.code}</p>
@@ -37,7 +38,7 @@ async function BranchesBody() {
               <label className="field">Closes<input name="closesAt" defaultValue={branch.closesAt} required /></label>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="homeCollection" defaultChecked={branch.homeCollection} /> Home collection</label>
               <button className="h-10 rounded-lg border px-3 text-sm" type="submit">Save hours</button>
-            </form>
+            </ActionForm>
           ))}
         </div>
       )}

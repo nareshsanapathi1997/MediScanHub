@@ -177,7 +177,7 @@ describe("tenant isolation and booking integrity", () => {
     const meera = await actor(ID.meera, null);
     const draft = await prismaPrivileged.medicalReport.findFirstOrThrow({ where: { bookingId: ID.bookingAsha } });
     const released = await prismaPrivileged.medicalReport.findFirstOrThrow({ where: { bookingId: ID.bookingMeera } });
-    await expect(readReportPdf(asha, draft.id)).rejects.toMatchObject({ status: 403 });
+    await expect(readReportPdf(asha, draft.id)).rejects.toMatchObject({ status: 404 });
     const file = await readReportPdf(meera, released.id);
     expect(file.bytes.subarray(0, 4).toString()).toBe("%PDF");
     await expect(readReportPdf(asha, released.id)).rejects.toMatchObject({ status: 404 });

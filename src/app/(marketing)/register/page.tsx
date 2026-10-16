@@ -21,7 +21,7 @@ function RegisterFields() {
       <label className="field">Full name<StickyInput name="name" required autoComplete="name" /></label>
       <label className="field">Email<StickyInput name="email" type="email" required autoComplete="email" /></label>
       <FieldError name="email" />
-      <label className="field">Phone<StickyInput name="phone" required autoComplete="tel" /></label>
+      <label className="field">Mobile number<StickyInput name="phone" required autoComplete="tel" inputMode="tel" placeholder="+91 98765 43210" /></label>
       <label className="field">Date of birth<StickyInput name="dateOfBirth" type="date" required /></label>
       <label className="field">Sex
         <StickySelect name="sex" defaultValue="FEMALE">
@@ -68,11 +68,11 @@ function RegisterFields() {
 export default function RegisterPage() {
   return (
     <main className="mx-auto grid max-w-md gap-6 px-4 py-10">
-      <PageHeader eyebrow="Patients" title="Create an account" description="This is for patients. Centers register separately." />
+      <PageHeader eyebrow="Patients" title="Create an account" description="Create a free account to book tests and download your reports. Diagnostic centers use a separate form." />
       <FormBox action={registerAction} submit="Create account">
         <RegisterFields />
       </FormBox>
-      <p className="text-sm"><Link className="text-primary" href="/onboarding">Register a diagnostic center</Link></p>
+      <p className="text-sm"><Link className="text-primary" href="/onboarding">Own a diagnostic center? Register it here</Link></p>
     </main>
   );
 }

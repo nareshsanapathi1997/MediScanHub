@@ -19,6 +19,12 @@ export async function listCenters(city?: string) {
   });
 }
 
+/** Price rows in force right now. Public pages must show the same price the server charges at checkout. */
+function activePriceWhere(): Prisma.ServicePriceWhereInput {
+  const now = new Date();
+  return { effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] };
+}
+
 export async function getCenterBySlug(slug: string) {
   const center = await prisma.tenant.findFirst({
     where: { slug, status: "ACTIVE", deletedAt: null },
@@ -26,25 +32,14 @@ export async function getCenterBySlug(slug: string) {
       branches: { where: { active: true, deletedAt: null }, orderBy: { name: "asc" } },
       services: {
         where: { published: true, archivedAt: null },
-        include: { category: true, prices: { orderBy: { pricePaise: "asc" } }, parameters: { orderBy: { position: "asc" }, include: { ranges: true } } },
+        include: { category: true, prices: { where: activePriceWhere(), orderBy: { effectiveFrom: "desc" } }, branchLinks: { where: { active: true }, select: { branchId: true } }, parameters: { orderBy: { position: "asc" }, include: { ranges: true } } },
         orderBy: { name: "asc" },
       },
       packages: { where: { published: true, archivedAt: null }, include: { items: { include: { service: true } } }, orderBy: { name: "asc" } },
     },
   });
   if (!center) return null;
-  if ("galleryUrls" in center) {
-    return { ...center, galleryUrls: center.galleryUrls ?? [] };
-  }
-  const marketing = await prisma.$queryRaw<{ coverImageUrl: string | null; galleryUrls: string[] }[]>`
-    SELECT "coverImageUrl", "galleryUrls" FROM "Tenant" WHERE "id" = ${center.id}::uuid LIMIT 1
-  `;
-  const extras = marketing[0];
-  return {
-    ...center,
-    coverImageUrl: extras?.coverImageUrl ?? null,
-    galleryUrls: extras?.galleryUrls ?? [],
-  };
+  return { ...center, coverImageUrl: center.coverImageUrl ?? null, galleryUrls: center.galleryUrls ?? [] };
 }
 
 export async function getCenterByDomain(host: string | null) {
@@ -77,7 +72,7 @@ export async function searchServices(input: { query?: string; city?: string; kin
     include: {
       tenant: { select: { name: true, slug: true, city: true, brandColor: true } },
       category: true,
-      prices: { orderBy: { effectiveFrom: "desc" }, take: 1, include: { branch: { select: { id: true, name: true, city: true } } } },
+      prices: { where: activePriceWhere(), orderBy: { effectiveFrom: "desc" }, take: 1, include: { branch: { select: { id: true, name: true, city: true } } } },
     },
     orderBy: { name: "asc" },
     take: 80,

@@ -2,13 +2,22 @@ import { requireSession } from "@/server/session";
 import { superAdminCount } from "@/lib/services/auth";
 import { bootstrapAdminAction } from "@/server/actions";
 import { FormBox } from "@/components/form-box";
-import { PageHeader } from "@/components/widgets";
+import { EmptyState, PageHeader } from "@/components/widgets";
 
 export const metadata = { title: "Bootstrap super admin" };
 
 export default async function BootstrapAdminPage() {
   await requireSession();
   const count = await superAdminCount();
+  if (count > 0) {
+    // Once a super admin exists, more admins are added from the platform Users page, not with the bootstrap secret.
+    return (
+      <>
+        <PageHeader eyebrow="Platform" title="Super admin is already set up" description="This one-time setup page is closed. A super admin can add more admins from Platform → Users." />
+        <EmptyState title="Nothing to do here" body="Go back to your desk from the menu." />
+      </>
+    );
+  }
   return (
     <>
       <PageHeader

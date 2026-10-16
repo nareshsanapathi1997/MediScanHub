@@ -3,6 +3,7 @@ import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { currentSession } from "@/server/session";
 import { homeFor } from "@/domain/actor";
+import { buttonVariants } from "@/components/ui/button";
 
 const links = [
   ["Tests", "/tests"],
@@ -21,18 +22,18 @@ export async function SiteHeader({ brand }: { brand?: { name: string; brandColor
         <Link href="/" aria-label="MediScan Hub home"><Logo /></Link>
         <nav className="hidden items-center gap-5 text-sm md:flex" aria-label="Primary">
           {links.map(([label, href]) => (
-            <Link key={href} href={href} className="text-muted-foreground hover:text-foreground">{label}</Link>
+            <Link key={href} href={href} className="font-medium text-muted-foreground transition-colors hover:text-foreground">{label}</Link>
           ))}
         </nav>
         <div className="flex items-center gap-2">
           {brand ? <span className="hidden rounded-full px-2 py-1 text-xs text-white sm:inline" style={{ background: brand.brandColor }}>{brand.name}</span> : null}
           <ThemeToggle />
           {session ? (
-            <Link href={homeFor(session.actor)} className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">Open desk</Link>
+            <Link href={homeFor(session.actor)} className={buttonVariants({ size: "sm" })}>Open desk</Link>
           ) : (
             <>
-              <Link href="/login" className="px-2 py-2 text-sm">Sign in</Link>
-              <Link href="/register" className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">Create account</Link>
+              <Link href="/login" className={buttonVariants({ size: "sm", variant: "ghost" })}>Sign in</Link>
+              <Link href="/register" className={buttonVariants({ size: "sm", className: "hidden sm:inline-flex" })}>Create account</Link>
             </>
           )}
         </div>

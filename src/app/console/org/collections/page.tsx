@@ -5,6 +5,7 @@ import { collectorAction } from "@/server/actions";
 import { formatWhen } from "@/lib/format";
 import { Gate, NeedTenant } from "@/components/guard";
 import { PageHeader, StatusPill, EmptyState } from "@/components/widgets";
+import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Home collection" };
 
@@ -29,8 +30,8 @@ async function CollectionsBody() {
   const rows = bookings.rows.filter((booking) => booking.collection);
   return (
     <>
-      <PageHeader eyebrow="Logistics" title="Home collection" description="Assign a phlebotomist who belongs to this center. They mark the visit en route and collected from the laboratory desk." />
-      {rows.length === 0 ? <EmptyState title="No home visits" body="Home collection bookings appear here after a patient chooses a home slot." /> : rows.map((booking) => (
+      <PageHeader eyebrow="Logistics" title="Home sample collection" description="Assign a phlebotomist to each home visit. They update the status (on the way, collected) from their phone." />
+      {rows.length === 0 ? <EmptyState title="No home visits booked" body="Home collection bookings appear here after a patient chooses a home slot." /> : rows.map((booking) => (
         <article key={booking.id} className="grid gap-2 rounded-2xl border bg-card p-4">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-2xl">{booking.publicCode}</h2>
@@ -38,13 +39,13 @@ async function CollectionsBody() {
           </div>
           <p className="text-sm">{booking.patient.user.name} · {booking.address} · {formatWhen(booking.scheduledAt)}</p>
           {booking.collection?.status === "REQUESTED" ? (
-            <form action={collectorAction} className="flex flex-wrap gap-2">
+            <ActionForm action={collectorAction} className="flex flex-wrap gap-2">
               <input type="hidden" name="bookingId" value={booking.id} />
               <select name="assigneeId" className="h-10 rounded-lg border bg-background px-2" required>
                 {phlebotomists.map((member) => <option key={member.userId} value={member.userId}>{member.user.name}</option>)}
               </select>
               <button className="h-10 rounded-lg bg-primary px-3 text-sm text-primary-foreground" type="submit">Assign</button>
-            </form>
+            </ActionForm>
           ) : <p className="text-sm text-muted-foreground">Assigned to {booking.collection?.assignee?.name ?? "a collector"}.</p>}
         </article>
       ))}

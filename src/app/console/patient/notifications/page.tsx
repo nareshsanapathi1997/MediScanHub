@@ -24,7 +24,7 @@ async function NotificationsBody() {
       <PageHeader
         eyebrow="Inbox"
         title="Notifications"
-        description="Secure messages about bookings and reports. Clinical values are never shown here."
+        description="Updates about your bookings and reports. For your privacy, test results are never shown here."
         actions={
           rows.some((row) => !row.readAt) ? (
             <form action={notificationReadAction}>

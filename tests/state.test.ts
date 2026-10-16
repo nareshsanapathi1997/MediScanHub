@@ -23,7 +23,7 @@ describe("state machines", () => {
     expect(() => assertUpload(Buffer.from("not a file"), "note.pdf")).toThrow(DomainError);
     const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n");
     expect(assertUpload(pdf, "report.pdf").kind).toBe("pdf");
-    expect(() => assertUpload(pdf, "report.png")).toThrow(/extension/i);
+    expect(() => assertUpload(pdf, "report.png")).toThrow(/does not match/i);
   });
 
   it("escapes barcode text", () => {

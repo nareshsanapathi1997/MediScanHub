@@ -24,7 +24,7 @@ async function AnalyticsBody({ from, to }: { from?: string; to?: string }) {
   const data = await tenantAnalytics(actor, from ? new Date(`${from}T00:00:00+05:30`) : undefined, to ? new Date(`${to}T23:59:59+05:30`) : undefined);
   return (
     <>
-      <PageHeader eyebrow="Analytics" title="Revenue and turnaround" description="Average release time is measured from report creation to release. It is blank until a report is released." actions={
+      <PageHeader eyebrow="Analytics" title="Revenue and report time" description="Money collected and how long reports take, from booking to release. Report time shows after the first report is released." actions={
         // eslint-disable-next-line @next/next/no-html-link-for-pages
         <a className="text-sm text-primary" href="/api/v1/exports/bookings">Export bookings CSV</a>
       } />

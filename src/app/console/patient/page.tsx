@@ -3,7 +3,9 @@ import { requireSession } from "@/server/session";
 import { listBookings } from "@/lib/services/booking";
 import { formatInr, formatWhen } from "@/lib/format";
 import { Gate } from "@/components/guard";
-import { PageHeader, StatusPill, EmptyState } from "@/components/widgets";
+import { PageHeader, Panel, StatusPill, EmptyState } from "@/components/widgets";
+import { buttonVariants } from "@/components/ui/button";
+import { Activity, CalendarClock, FileText, IndianRupee, Inbox, LifeBuoy, Plus, ReceiptText, ShieldCheck, UserRound, Users } from "@/components/icons";
 
 export const metadata = { title: "My care" };
 
@@ -20,33 +22,51 @@ async function PatientBody() {
   const { actor } = await requireSession();
   const patientActor = { ...actor, activeTenantId: null };
   const bookings = await listBookings(patientActor, { pageSize: 20 });
+  const active = ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"];
+  const upcoming = bookings.rows.filter((booking) => active.includes(booking.status)).sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt));
+  const past = bookings.rows.filter((booking) => !active.includes(booking.status));
+  const awaitingPayment = upcoming.filter((booking) => booking.status === "PENDING").length;
+  const row = (booking: (typeof bookings.rows)[number]) => (
+    <li key={booking.id}>
+      <Link href={`/bookings/${booking.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3 hover:text-primary">
+        <span className="min-w-0">
+          <span className="block font-medium">{booking.items.map((item) => item.name).join(", ") || booking.publicCode}</span>
+          <span className="text-xs text-muted-foreground">{booking.publicCode} · {booking.tenant.name} · {booking.branch.name}</span>
+        </span>
+        <span className="flex items-center gap-3 text-sm"><span className="text-muted-foreground tabular-nums">{formatWhen(booking.scheduledAt)}</span><span className="tabular-nums">{formatInr(booking.totalPaise)}</span><StatusPill value={booking.status} /></span>
+      </Link>
+    </li>
+  );
   return (
     <>
-      <PageHeader eyebrow="Patient" title={`Hello, ${actor.name.split(" ")[0]}`} description="Appointments, released reports, and invoices for your own profile." actions={<Link className="text-sm text-primary" href="/tests">Book a test</Link>} />
-      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-        <Link href="/console/patient/reports">Reports</Link>
-        <Link href="/console/patient/invoices">Invoices</Link>
-        <Link href="/console/patient/notifications">Inbox</Link>
-        <Link href="/console/patient/reminders">Reminders</Link>
-        <Link href="/console/patient/support">Support</Link>
-        <Link href="/console/patient/family">Family</Link>
-        <Link href="/console/patient/wallet">Wallet</Link>
-        <Link href="/console/patient/insurance">Insurance</Link>
-        <Link href="/console/patient/chronic">Chronic care</Link>
-        <Link href="/console/account">Account</Link>
+      <PageHeader eyebrow="My care" title={`Hello, ${actor.name.replace(/^Synth\s+(Patient\s+)?/i, "").split(" ")[0] || actor.name.split(" ")[0]}`} description="Your bookings, reports and bills in one place. Only you can see this page." actions={<Link className={buttonVariants()} href="/centers"><Plus className="size-4" aria-hidden />Book a test</Link>} />
+      {awaitingPayment > 0 ? <p role="status" className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">{awaitingPayment} visit{awaitingPayment === 1 ? " is" : "s are"} waiting for payment. Please pay to confirm.</p> : null}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { href: "/console/patient/reports", label: "My reports", body: "View and download your reports", icon: FileText },
+          { href: "/console/patient/invoices", label: "Bills", body: "Bills and payment status", icon: ReceiptText },
+          { href: "/console/patient/notifications", label: "Messages", body: "Updates from your centers", icon: Inbox },
+          { href: "/console/patient/reminders", label: "Upcoming visits", body: "Your next tests and reminders", icon: CalendarClock },
+          { href: "/console/patient/family", label: "Family", body: "Book tests for parents and children", icon: Users },
+          { href: "/console/patient/wallet", label: "Wallet", body: "1% back to use on your next booking", icon: IndianRupee },
+          { href: "/console/patient/insurance", label: "Insurance", body: "Your health insurance policy", icon: ShieldCheck },
+          { href: "/console/patient/chronic", label: "Health history", body: "Diabetes, BP, thyroid and more", icon: Activity },
+          { href: "/console/patient/support", label: "Help", body: "Ask us a question", icon: LifeBuoy },
+          { href: "/console/account", label: "Profile and privacy", body: "Your details, download or delete data", icon: UserRound },
+        ].map(({ href, label, body, icon: Icon }) => (
+          <Link key={href} href={href} className="surface flex items-center gap-3 p-4 transition hover:border-primary/50">
+            <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="size-5" aria-hidden /></span>
+            <span><span className="block font-medium">{label}</span><span className="block text-xs text-muted-foreground">{body}</span></span>
+          </Link>
+        ))}
       </div>
-      {bookings.rows.length === 0 ? <EmptyState title="No visits yet" body="Search a test and choose a slot. The price is confirmed on the server." action={<Link className="text-primary" href="/centers">Browse centers</Link>} /> : (
-        <div className="grid gap-3">
-          {bookings.rows.map((booking) => (
-            <Link key={booking.id} href={`/bookings/${booking.id}`} className="flex items-center justify-between rounded-2xl border bg-card p-4">
-              <span>
-                <span className="block font-medium">{booking.publicCode} · {booking.tenant.name}</span>
-                <span className="text-sm text-muted-foreground">{formatWhen(booking.scheduledAt)} · {formatInr(booking.totalPaise)}</span>
-              </span>
-              <StatusPill value={booking.status} />
-            </Link>
-          ))}
-        </div>
+      {bookings.rows.length === 0 ? <EmptyState title="No bookings yet" body="Find a center near you, add a test like CBC or thyroid profile, and pick a time." action={<Link className={buttonVariants()} href="/centers">Browse centers</Link>} /> : (
+        <>
+          <Panel title="Upcoming" description="Pay for a pending booking to confirm it.">
+            {upcoming.length === 0 ? <p className="text-sm text-muted-foreground">No upcoming visits. Book a test when you need one.</p> : <ul className="divide-y">{upcoming.map(row)}</ul>}
+          </Panel>
+          {past.length > 0 ? <Panel title="Past and cancelled visits"><ul className="divide-y">{past.map(row)}</ul></Panel> : null}
+        </>
       )}
     </>
   );

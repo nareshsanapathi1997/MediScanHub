@@ -255,47 +255,48 @@ model User {
   updatedAt        DateTime   @updatedAt
   deletedAt        DateTime?
 
-  sessions               Session[]
-  passwordResets         PasswordReset[]
-  memberships            TenantMembership[]
-  staffAssignments       StaffAssignment[]
-  patient                Patient?
-  auditLogs              AuditLog[]              @relation("AuditActor")
-  notifications          Notification[]
-  ticketsOpened          SupportTicket[]         @relation("TicketRequester")
-  ticketsAssigned        SupportTicket[]         @relation("TicketAssignee")
-  consents               PatientConsent[]
-  bookingsCreated        Booking[]               @relation("BookingCreator")
-  referredBookings       Booking[]               @relation("BookingReferral")
-  statusChanges          BookingStatusHistory[]
-  collectionTasks        HomeCollectionTask[]    @relation("Collector")
-  sampleEvents           SampleEvent[]
-  assignedSamples        Sample[]                @relation("SampleTechnician")
-  resultsEntered         LabResult[]             @relation("ResultEnteredBy")
-  approvals              ReportApproval[]
-  reportVersions         ReportVersion[]
-  equipmentSchedules     EquipmentSchedule[]
-  verificationsReviewed  CenterVerification[]    @relation("VerificationReviewer")
-  invitationsSent        Invitation[]            @relation("InvitationSender")
+  sessions              Session[]
+  passwordResets        PasswordReset[]
+  memberships           TenantMembership[]
+  staffAssignments      StaffAssignment[]
+  patient               Patient?
+  auditLogs             AuditLog[]             @relation("AuditActor")
+  notifications         Notification[]
+  ticketsOpened         SupportTicket[]        @relation("TicketRequester")
+  ticketsAssigned       SupportTicket[]        @relation("TicketAssignee")
+  consents              PatientConsent[]
+  bookingsCreated       Booking[]              @relation("BookingCreator")
+  referredBookings      Booking[]              @relation("BookingReferral")
+  statusChanges         BookingStatusHistory[]
+  collectionTasks       HomeCollectionTask[]   @relation("Collector")
+  sampleEvents          SampleEvent[]
+  assignedSamples       Sample[]               @relation("SampleTechnician")
+  resultsEntered        LabResult[]            @relation("ResultEnteredBy")
+  approvals             ReportApproval[]
+  reportVersions        ReportVersion[]
+  reportFiles           ReportFile[]
+  equipmentSchedules    EquipmentSchedule[]
+  verificationsReviewed CenterVerification[]   @relation("VerificationReviewer")
+  invitationsSent       Invitation[]           @relation("InvitationSender")
 
   @@index([status])
 }
 
 model Session {
-  id             String    @id @default(uuid()) @db.Uuid
-  userId         String    @db.Uuid
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash      String    @unique
-  csrfSecret     String
-  userAgent      String?
-  ipAddress      String?
-  activeTenantId String?   @db.Uuid
-  activeBranchId String?   @db.Uuid
-  expiresAt      DateTime
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash         String    @unique
+  csrfSecret        String
+  userAgent         String?
+  ipAddress         String?
+  activeTenantId    String?   @db.Uuid
+  activeBranchId    String?   @db.Uuid
+  expiresAt         DateTime
   absoluteExpiresAt DateTime
-  revokedAt      DateTime?
-  lastSeenAt     DateTime  @default(now())
-  createdAt      DateTime  @default(now())
+  revokedAt         DateTime?
+  lastSeenAt        DateTime  @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
@@ -344,46 +345,46 @@ model RolePermission {
 }
 
 model Tenant {
-  id           String       @id @default(uuid()) @db.Uuid
-  name         String
-  slug         String       @unique
-  legalName    String
-  status       TenantStatus @default(PENDING)
-  brandColor   String       @default("#0F766E")
-  accentColor  String       @default("#155E75")
-  logoUrl        String?
-  coverImageUrl  String?
-  galleryUrls    String[]     @default([])
-  customDomain String?      @unique
-  email        String
-  phone        String
-  city         String
-  state        String
-  address      String
-  about        String
-  gstin        String?
-  isSynthetic  Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  deletedAt    DateTime?
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String       @unique
+  legalName     String
+  status        TenantStatus @default(PENDING)
+  brandColor    String       @default("#0F766E")
+  accentColor   String       @default("#155E75")
+  logoUrl       String?
+  coverImageUrl String?
+  galleryUrls   String[]     @default([])
+  customDomain  String?      @unique
+  email         String
+  phone         String
+  city          String
+  state         String
+  address       String
+  about         String
+  gstin         String?
+  isSynthetic   Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
 
-  memberships    TenantMembership[]
-  branches       Branch[]
-  verifications  CenterVerification[]
-  subscriptions  Subscription[]
-  services       DiagnosticService[]
-  packages       TestPackage[]
-  bookings       Booking[]
-  patients       PatientBranchRecord[]
-  invoices       Invoice[]
-  notifications  Notification[]
-  auditLogs      AuditLog[]
-  tickets        SupportTicket[]
-  invitations    Invitation[]
-  equipment      Equipment[]
+  memberships         TenantMembership[]
+  branches            Branch[]
+  verifications       CenterVerification[]
+  subscriptions       Subscription[]
+  services            DiagnosticService[]
+  packages            TestPackage[]
+  bookings            Booking[]
+  patients            PatientBranchRecord[]
+  invoices            Invoice[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  tickets             SupportTicket[]
+  invitations         Invitation[]
+  equipment           Equipment[]
   integrationMessages IntegrationMessage[]
-  tpaClaims      TpaClaim[]
-  consents       PatientConsent[]
+  tpaClaims           TpaClaim[]
+  consents            PatientConsent[]
 
   @@index([status, city])
   @@index([isSynthetic])
@@ -428,35 +429,35 @@ model Invitation {
 }
 
 model Branch {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @db.Uuid
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  code      String
-  address   String
-  city      String
-  state     String
-  phone     String
-  email     String?
-  opensAt   String   @default("07:00")
-  closesAt  String   @default("20:00")
-  homeCollection Boolean @default(false)
-  active    Boolean  @default(true)
-  latitude  Float?
-  longitude Float?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  name           String
+  code           String
+  address        String
+  city           String
+  state          String
+  phone          String
+  email          String?
+  opensAt        String    @default("07:00")
+  closesAt       String    @default("20:00")
+  homeCollection Boolean   @default(false)
+  active         Boolean   @default(true)
+  latitude       Float?
+  longitude      Float?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
-  staff          StaffAssignment[]
-  services       BranchService[]
-  prices         ServicePrice[]
-  slots          AvailabilitySlot[]
-  bookings       Booking[]
-  records        PatientBranchRecord[]
-  equipment      Equipment[]
-  invitations    Invitation[]
-  labOrders      LabOrder[]
+  staff       StaffAssignment[]
+  services    BranchService[]
+  prices      ServicePrice[]
+  slots       AvailabilitySlot[]
+  bookings    Booking[]
+  records     PatientBranchRecord[]
+  equipment   Equipment[]
+  invitations Invitation[]
+  labOrders   LabOrder[]
 
   @@unique([tenantId, code])
   @@index([tenantId, active])
@@ -496,20 +497,20 @@ model CenterVerification {
 }
 
 model SubscriptionPlan {
-  id                   String   @id @default(uuid()) @db.Uuid
-  tier                 String   @unique
-  name                 String
-  description          String
-  monthlyPricePaise    Int
-  annualPricePaise     Int
-  maxBranches          Int?
-  maxUsers             Int?
-  maxBookingsPerMonth  Int?
-  trialDays            Int      @default(14)
-  features             Json
-  active               Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  String   @id @default(uuid()) @db.Uuid
+  tier                String   @unique
+  name                String
+  description         String
+  monthlyPricePaise   Int
+  annualPricePaise    Int
+  maxBranches         Int?
+  maxUsers            Int?
+  maxBookingsPerMonth Int?
+  trialDays           Int      @default(14)
+  features            Json
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   subscriptions Subscription[]
 }
@@ -536,33 +537,33 @@ model Subscription {
 }
 
 model ServiceCategory {
-  id          String      @id @default(uuid()) @db.Uuid
+  id          String              @id @default(uuid()) @db.Uuid
   name        String
-  slug        String      @unique
+  slug        String              @unique
   kind        ServiceKind
   description String
   services    DiagnosticService[]
 }
 
 model DiagnosticService {
-  id            String         @id @default(uuid()) @db.Uuid
-  tenantId      String         @db.Uuid
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  categoryId    String         @db.Uuid
-  category      ServiceCategory @relation(fields: [categoryId], references: [id])
-  name          String
-  slug          String
-  code          String
-  kind          ServiceKind
-  description   String
-  sampleType    String?
-  preparation   String?
-  tatHours      Int
-  modality      String?
-  published     Boolean        @default(false)
-  archivedAt    DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id          String          @id @default(uuid()) @db.Uuid
+  tenantId    String          @db.Uuid
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  categoryId  String          @db.Uuid
+  category    ServiceCategory @relation(fields: [categoryId], references: [id])
+  name        String
+  slug        String
+  code        String
+  kind        ServiceKind
+  description String
+  sampleType  String?
+  preparation String?
+  tatHours    Int
+  modality    String?
+  published   Boolean         @default(false)
+  archivedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   parameters   TestParameter[]
   branchLinks  BranchService[]
@@ -579,14 +580,14 @@ model DiagnosticService {
 }
 
 model TestParameter {
-  id         String     @id @default(uuid()) @db.Uuid
-  tenantId   String     @db.Uuid
-  serviceId  String     @db.Uuid
+  id         String            @id @default(uuid()) @db.Uuid
+  tenantId   String            @db.Uuid
+  serviceId  String            @db.Uuid
   service    DiagnosticService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   name       String
   unit       String?
   resultType ResultType
-  position   Int        @default(0)
+  position   Int               @default(0)
 
   ranges  ReferenceRange[]
   results LabResult[]
@@ -595,19 +596,19 @@ model TestParameter {
 }
 
 model ReferenceRange {
-  id          String        @id @default(uuid()) @db.Uuid
-  tenantId    String        @db.Uuid
-  parameterId String        @db.Uuid
-  parameter   TestParameter @relation(fields: [parameterId], references: [id], onDelete: Cascade)
-  sex         Sex?
-  ageMinYears Int?
-  ageMaxYears Int?
-  low         Decimal?      @db.Decimal(12, 4)
-  high        Decimal?      @db.Decimal(12, 4)
-  criticalLow Decimal?      @db.Decimal(12, 4)
-  criticalHigh Decimal?     @db.Decimal(12, 4)
-  textValue   String?
-  label       String        @default("Adult")
+  id           String        @id @default(uuid()) @db.Uuid
+  tenantId     String        @db.Uuid
+  parameterId  String        @db.Uuid
+  parameter    TestParameter @relation(fields: [parameterId], references: [id], onDelete: Cascade)
+  sex          Sex?
+  ageMinYears  Int?
+  ageMaxYears  Int?
+  low          Decimal?      @db.Decimal(12, 4)
+  high         Decimal?      @db.Decimal(12, 4)
+  criticalLow  Decimal?      @db.Decimal(12, 4)
+  criticalHigh Decimal?      @db.Decimal(12, 4)
+  textValue    String?
+  label        String        @default("Adult")
 
   @@index([parameterId])
 }
@@ -655,35 +656,35 @@ model BranchService {
 }
 
 model ServicePrice {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  branchId      String    @db.Uuid
-  branch        Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  serviceId     String    @db.Uuid
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @db.Uuid
+  branchId      String            @db.Uuid
+  branch        Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  serviceId     String            @db.Uuid
   service       DiagnosticService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   pricePaise    Int
-  discountPaise Int       @default(0)
-  effectiveFrom DateTime  @default(now())
+  discountPaise Int               @default(0)
+  effectiveFrom DateTime          @default(now())
   effectiveTo   DateTime?
-  createdAt     DateTime  @default(now())
+  createdAt     DateTime          @default(now())
 
   @@index([tenantId, branchId, serviceId])
 }
 
 model AvailabilitySlot {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
-  branchId    String   @db.Uuid
-  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @db.Uuid
+  branchId    String     @db.Uuid
+  branch      Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
   kind        SlotKind
   startsAt    DateTime
   endsAt      DateTime
   capacity    Int
-  bookedCount Int      @default(0)
-  equipmentId String?  @db.Uuid
+  bookedCount Int        @default(0)
+  equipmentId String?    @db.Uuid
   equipment   Equipment? @relation(fields: [equipmentId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   bookings Booking[]
 
@@ -706,16 +707,16 @@ model Patient {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  consents PatientConsent[]
-  records  PatientBranchRecord[]
-  bookings Booking[]
-  invoices Invoice[]
-  dependents PatientDependent[] @relation("GuardianDependents")
-  wallet     PatientWallet?
-  walletTx   WalletTransaction[]
-  insurance  InsurancePolicy[]
+  consents          PatientConsent[]
+  records           PatientBranchRecord[]
+  bookings          Booking[]
+  invoices          Invoice[]
+  dependents        PatientDependent[]        @relation("GuardianDependents")
+  wallet            PatientWallet?
+  walletTx          WalletTransaction[]
+  insurance         InsurancePolicy[]
   chronicConditions PatientChronicCondition[]
-  tpaClaims  TpaClaim[]
+  tpaClaims         TpaClaim[]
 }
 
 model PatientConsent {
@@ -755,44 +756,44 @@ model PatientBranchRecord {
 }
 
 model Booking {
-  id              String        @id @default(uuid()) @db.Uuid
-  tenantId        String        @db.Uuid
-  tenant          Tenant        @relation(fields: [tenantId], references: [id])
-  branchId        String        @db.Uuid
-  branch          Branch        @relation(fields: [branchId], references: [id])
-  patientId       String        @db.Uuid
-  patient         Patient       @relation(fields: [patientId], references: [id])
-  slotId          String?       @db.Uuid
-  slot            AvailabilitySlot? @relation(fields: [slotId], references: [id])
-  consentId       String?       @db.Uuid
-  consent         PatientConsent? @relation(fields: [consentId], references: [id])
-  createdById     String        @db.Uuid
-  createdBy       User          @relation("BookingCreator", fields: [createdById], references: [id])
-  referralUserId  String?       @db.Uuid
-  referral        User?         @relation("BookingReferral", fields: [referralUserId], references: [id])
-  publicCode      String        @unique
-  visitType       VisitType
-  status          BookingStatus @default(PENDING)
-  scheduledAt     DateTime
-  address         String?
-  notes           String?
-  dependentId     String?       @db.Uuid
-  dependent       PatientDependent? @relation(fields: [dependentId], references: [id])
+  id                     String            @id @default(uuid()) @db.Uuid
+  tenantId               String            @db.Uuid
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id])
+  branchId               String            @db.Uuid
+  branch                 Branch            @relation(fields: [branchId], references: [id])
+  patientId              String            @db.Uuid
+  patient                Patient           @relation(fields: [patientId], references: [id])
+  slotId                 String?           @db.Uuid
+  slot                   AvailabilitySlot? @relation(fields: [slotId], references: [id])
+  consentId              String?           @db.Uuid
+  consent                PatientConsent?   @relation(fields: [consentId], references: [id])
+  createdById            String            @db.Uuid
+  createdBy              User              @relation("BookingCreator", fields: [createdById], references: [id])
+  referralUserId         String?           @db.Uuid
+  referral               User?             @relation("BookingReferral", fields: [referralUserId], references: [id])
+  publicCode             String            @unique
+  visitType              VisitType
+  status                 BookingStatus     @default(PENDING)
+  scheduledAt            DateTime
+  address                String?
+  notes                  String?
+  dependentId            String?           @db.Uuid
+  dependent              PatientDependent? @relation(fields: [dependentId], references: [id])
   prescriptionStorageKey String?
   prescriptionFileName   String?
-  totalPaise      Int
-  idempotencyKey  String        @unique
-  isSynthetic     Boolean       @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  totalPaise             Int
+  idempotencyKey         String            @unique
+  isSynthetic            Boolean           @default(false)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
-  items       BookingItem[]
-  history     BookingStatusHistory[]
-  collection  HomeCollectionTask?
-  labOrder    LabOrder?
+  items        BookingItem[]
+  history      BookingStatusHistory[]
+  collection   HomeCollectionTask?
+  labOrder     LabOrder?
   imagingOrder ImagingOrder?
-  invoice     Invoice?
-  reports     MedicalReport[]
+  invoice      Invoice?
+  reports      MedicalReport[]
 
   @@index([tenantId, status, scheduledAt])
   @@index([patientId])
@@ -801,32 +802,33 @@ model Booking {
 }
 
 model BookingItem {
-  id         String             @id @default(uuid()) @db.Uuid
-  tenantId   String             @db.Uuid
-  bookingId  String             @db.Uuid
-  booking    Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  serviceId  String?            @db.Uuid
-  service    DiagnosticService? @relation(fields: [serviceId], references: [id])
-  packageId  String?            @db.Uuid
-  package    TestPackage?       @relation(fields: [packageId], references: [id])
-  name       String
-  pricePaise Int
-  createdAt  DateTime           @default(now())
+  id          String             @id @default(uuid()) @db.Uuid
+  tenantId    String             @db.Uuid
+  bookingId   String             @db.Uuid
+  booking     Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  serviceId   String?            @db.Uuid
+  service     DiagnosticService? @relation(fields: [serviceId], references: [id])
+  packageId   String?            @db.Uuid
+  package     TestPackage?       @relation(fields: [packageId], references: [id])
+  name        String
+  pricePaise  Int
+  createdAt   DateTime           @default(now())
+  reportFiles ReportFile[]
 
   @@index([tenantId, bookingId])
 }
 
 model BookingStatusHistory {
-  id        String         @id @default(uuid()) @db.Uuid
-  tenantId  String         @db.Uuid
-  bookingId String         @db.Uuid
-  booking   Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  id         String         @id @default(uuid()) @db.Uuid
+  tenantId   String         @db.Uuid
+  bookingId  String         @db.Uuid
+  booking    Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   fromStatus BookingStatus?
-  toStatus  BookingStatus
-  actorId   String?        @db.Uuid
-  actor     User?          @relation(fields: [actorId], references: [id])
-  reason    String?
-  createdAt DateTime       @default(now())
+  toStatus   BookingStatus
+  actorId    String?        @db.Uuid
+  actor      User?          @relation(fields: [actorId], references: [id])
+  reason     String?
+  createdAt  DateTime       @default(now())
 
   @@index([bookingId])
 }
@@ -867,20 +869,20 @@ model LabOrder {
 }
 
 model Sample {
-  id              String       @id @default(uuid()) @db.Uuid
-  tenantId        String       @db.Uuid
-  labOrderId      String       @db.Uuid
-  labOrder        LabOrder     @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
-  serviceId       String       @db.Uuid
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @db.Uuid
+  labOrderId      String            @db.Uuid
+  labOrder        LabOrder          @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  serviceId       String            @db.Uuid
   service         DiagnosticService @relation(fields: [serviceId], references: [id])
-  status          SampleStatus @default(PENDING)
-  assigneeId      String?      @db.Uuid
-  assignee        User?        @relation("SampleTechnician", fields: [assigneeId], references: [id])
+  status          SampleStatus      @default(PENDING)
+  assigneeId      String?           @db.Uuid
+  assignee        User?             @relation("SampleTechnician", fields: [assigneeId], references: [id])
   rejectionReason String?
   collectedAt     DateTime?
   receivedAt      DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   barcode SampleBarcode?
   events  SampleEvent[]
@@ -939,56 +941,87 @@ model LabResult {
 }
 
 model MedicalReport {
-  id              String       @id @default(uuid()) @db.Uuid
-  tenantId        String       @db.Uuid
-  bookingId       String       @db.Uuid
-  booking         Booking      @relation(fields: [bookingId], references: [id])
-  labOrderId      String?      @db.Uuid
-  labOrder        LabOrder?    @relation(fields: [labOrderId], references: [id])
-  imagingOrderId  String?      @db.Uuid
-  imagingOrder    ImagingOrder? @relation(fields: [imagingOrderId], references: [id])
-  status          ReportStatus @default(DRAFT)
-  title           String
-  currentVersion  Int          @default(0)
-  releasedAt      DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @db.Uuid
+  bookingId      String        @db.Uuid
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+  labOrderId     String?       @db.Uuid
+  labOrder       LabOrder?     @relation(fields: [labOrderId], references: [id])
+  imagingOrderId String?       @db.Uuid
+  imagingOrder   ImagingOrder? @relation(fields: [imagingOrderId], references: [id])
+  status         ReportStatus  @default(DRAFT)
+  title          String
+  currentVersion Int           @default(0)
+  releasedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   approvals ReportApproval[]
   versions  ReportVersion[]
+  files     ReportFile[]
 
   @@index([tenantId, status])
   @@index([bookingId])
 }
 
 model ReportApproval {
-  id         String   @id @default(uuid()) @db.Uuid
-  tenantId   String   @db.Uuid
-  reportId   String   @db.Uuid
+  id         String        @id @default(uuid()) @db.Uuid
+  tenantId   String        @db.Uuid
+  reportId   String        @db.Uuid
   report     MedicalReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  approverId String   @db.Uuid
-  approver   User     @relation(fields: [approverId], references: [id])
+  approverId String        @db.Uuid
+  approver   User          @relation(fields: [approverId], references: [id])
   decision   String
   comment    String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime      @default(now())
 
   @@index([reportId])
 }
 
 model ReportVersion {
-  id         String        @id @default(uuid()) @db.Uuid
-  tenantId   String        @db.Uuid
-  reportId   String        @db.Uuid
-  report     MedicalReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  version    Int
-  storageKey String
-  checksum   String
-  note       String?
-  createdById String       @db.Uuid
-  createdBy  User          @relation(fields: [createdById], references: [id])
-  createdAt  DateTime      @default(now())
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @db.Uuid
+  reportId    String        @db.Uuid
+  report      MedicalReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  version     Int
+  storageKey  String
+  checksum    String
+  note        String?
+  createdById String        @db.Uuid
+  createdBy   User          @relation(fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
 
   @@unique([reportId, version])
+}
+
+enum ReportFileKind {
+  LAB_REPORT
+  SCAN_IMAGE
+  SCAN_REPORT
+  OTHER
+}
+
+/// A file a center uploads against a report: a scanned blood report, X-ray/CT/MRI image, ultrasound PDF.
+/// Bytes live in private storage; patients see a file only after its report is released.
+model ReportFile {
+  id            String         @id @default(uuid()) @db.Uuid
+  tenantId      String         @db.Uuid
+  reportId      String         @db.Uuid
+  report        MedicalReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  bookingItemId String?        @db.Uuid
+  bookingItem   BookingItem?   @relation(fields: [bookingItemId], references: [id])
+  kind          ReportFileKind
+  fileName      String
+  contentType   String
+  sizeBytes     Int
+  storageKey    String
+  checksum      String
+  uploadedById  String         @db.Uuid
+  uploadedBy    User           @relation(fields: [uploadedById], references: [id])
+  createdAt     DateTime       @default(now())
+  removedAt     DateTime?
+
+  @@index([tenantId, reportId])
 }
 
 model Equipment {
@@ -1043,52 +1076,52 @@ model ImagingOrder {
 }
 
 model ImagingStudy {
-  id                String      @id @default(uuid()) @db.Uuid
-  tenantId          String      @db.Uuid
-  imagingOrderId    String      @db.Uuid
-  imagingOrder      ImagingOrder @relation(fields: [imagingOrderId], references: [id], onDelete: Cascade)
-  serviceId         String      @db.Uuid
-  service           DiagnosticService @relation(fields: [serviceId], references: [id])
-  equipmentId       String?     @db.Uuid
-  equipment         Equipment?  @relation(fields: [equipmentId], references: [id])
-  accession         String      @unique
-  status            StudyStatus @default(SCHEDULED)
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @db.Uuid
+  imagingOrderId   String            @db.Uuid
+  imagingOrder     ImagingOrder      @relation(fields: [imagingOrderId], references: [id], onDelete: Cascade)
+  serviceId        String            @db.Uuid
+  service          DiagnosticService @relation(fields: [serviceId], references: [id])
+  equipmentId      String?           @db.Uuid
+  equipment        Equipment?        @relation(fields: [equipmentId], references: [id])
+  accession        String            @unique
+  status           StudyStatus       @default(SCHEDULED)
   // Reserved for a future DICOM/PACS integration. This product does not speak DICOM.
-  studyInstanceUid  String?
-  pacsStatus        PacsStatus  @default(NOT_INTEGRATED)
-  startedAt         DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  studyInstanceUid String?
+  pacsStatus       PacsStatus        @default(NOT_INTEGRATED)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([tenantId, status])
 }
 
 model Invoice {
-  id             String        @id @default(uuid()) @db.Uuid
-  tenantId       String        @db.Uuid
-  tenant         Tenant        @relation(fields: [tenantId], references: [id])
-  kind           InvoiceKind
-  status         InvoiceStatus @default(ISSUED)
-  number         String        @unique
-  bookingId      String?       @unique @db.Uuid
-  booking        Booking?      @relation(fields: [bookingId], references: [id])
-  patientId      String?       @db.Uuid
-  patient        Patient?      @relation(fields: [patientId], references: [id])
-  subscriptionId String?       @db.Uuid
-  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
-  subtotalPaise       Int
-  taxPaise            Int           @default(0)
-  walletRedeemPaise   Int           @default(0)
-  insurancePolicyId   String?       @db.Uuid
-  insurancePolicy     InsurancePolicy? @relation(fields: [insurancePolicyId], references: [id])
-  tpaReference        String?
-  totalPaise          Int
-  lines               Json
-  issuedAt            DateTime      @default(now())
-  dueAt               DateTime?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @db.Uuid
+  tenant            Tenant           @relation(fields: [tenantId], references: [id])
+  kind              InvoiceKind
+  status            InvoiceStatus    @default(ISSUED)
+  number            String           @unique
+  bookingId         String?          @unique @db.Uuid
+  booking           Booking?         @relation(fields: [bookingId], references: [id])
+  patientId         String?          @db.Uuid
+  patient           Patient?         @relation(fields: [patientId], references: [id])
+  subscriptionId    String?          @db.Uuid
+  subscription      Subscription?    @relation(fields: [subscriptionId], references: [id])
+  subtotalPaise     Int
+  taxPaise          Int              @default(0)
+  walletRedeemPaise Int              @default(0)
+  insurancePolicyId String?          @db.Uuid
+  insurancePolicy   InsurancePolicy? @relation(fields: [insurancePolicyId], references: [id])
+  tpaReference      String?
+  totalPaise        Int
+  lines             Json
+  issuedAt          DateTime         @default(now())
+  dueAt             DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   payments  Payment[]
   tpaClaims TpaClaim[]
@@ -1135,21 +1168,21 @@ model Refund {
 }
 
 model Notification {
-  id         String             @id @default(uuid()) @db.Uuid
-  tenantId   String?            @db.Uuid
-  tenant     Tenant?            @relation(fields: [tenantId], references: [id])
-  userId     String?            @db.Uuid
-  user       User?              @relation(fields: [userId], references: [id])
-  channel    NotificationChannel
-  templateKey String
-  toAddress  String
-  payload    Json
-  status     NotificationStatus @default(QUEUED)
-  attempts   Int                @default(0)
-  nextAttemptAt DateTime        @default(now())
-  readAt     DateTime?
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String?             @db.Uuid
+  tenant        Tenant?             @relation(fields: [tenantId], references: [id])
+  userId        String?             @db.Uuid
+  user          User?               @relation(fields: [userId], references: [id])
+  channel       NotificationChannel
+  templateKey   String
+  toAddress     String
+  payload       Json
+  status        NotificationStatus  @default(QUEUED)
+  attempts      Int                 @default(0)
+  nextAttemptAt DateTime            @default(now())
+  readAt        DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   deliveries NotificationDeliveryAttempt[]
 
@@ -1238,28 +1271,28 @@ model PlatformSetting {
 }
 
 model PatientDependent {
-  id                String   @id @default(uuid()) @db.Uuid
-  guardianPatientId String   @db.Uuid
-  guardian          Patient  @relation("GuardianDependents", fields: [guardianPatientId], references: [id], onDelete: Cascade)
+  id                String    @id @default(uuid()) @db.Uuid
+  guardianPatientId String    @db.Uuid
+  guardian          Patient   @relation("GuardianDependents", fields: [guardianPatientId], references: [id], onDelete: Cascade)
   name              String
   dateOfBirth       DateTime
   sex               Sex
   relation          String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   bookings          Booking[]
 
   @@index([guardianPatientId])
 }
 
 model PatientChronicCondition {
-  id        String   @id @default(uuid()) @db.Uuid
-  patientId String   @db.Uuid
-  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  id        String    @id @default(uuid()) @db.Uuid
+  patientId String    @db.Uuid
+  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   condition String
   since     DateTime?
   notes     String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([patientId])
 }
@@ -1301,23 +1334,23 @@ model InsurancePolicy {
 }
 
 model TpaClaim {
-  id                String         @id @default(uuid()) @db.Uuid
-  tenantId          String         @db.Uuid
-  tenant            Tenant         @relation(fields: [tenantId], references: [id])
-  patientId         String         @db.Uuid
-  patient           Patient        @relation(fields: [patientId], references: [id])
-  invoiceId         String         @db.Uuid
-  invoice           Invoice        @relation(fields: [invoiceId], references: [id])
-  insurancePolicyId String         @db.Uuid
+  id                String          @id @default(uuid()) @db.Uuid
+  tenantId          String          @db.Uuid
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  patientId         String          @db.Uuid
+  patient           Patient         @relation(fields: [patientId], references: [id])
+  invoiceId         String          @db.Uuid
+  invoice           Invoice         @relation(fields: [invoiceId], references: [id])
+  insurancePolicyId String          @db.Uuid
   insurancePolicy   InsurancePolicy @relation(fields: [insurancePolicyId], references: [id])
-  status            TpaClaimStatus @default(SUBMITTED)
+  status            TpaClaimStatus  @default(SUBMITTED)
   claimedPaise      Int
   approvedPaise     Int?
   paidPaise         Int?
   externalReference String?
   notes             String?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@index([tenantId, status])
   @@index([patientId])
@@ -1345,12 +1378,12 @@ model GeoCountry {
 }
 
 model GeoState {
-  id          Int         @id
+  id          Int        @id
   name        String
-  countryId   Int         @map("country_id")
-  country     GeoCountry  @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  countryCode String      @map("country_code") @db.Char(2)
-  stateCode   String?     @map("state_code")
+  countryId   Int        @map("country_id")
+  country     GeoCountry @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  countryCode String     @map("country_code") @db.Char(2)
+  stateCode   String?    @map("state_code")
   cities      GeoCity[]
 
   @@index([countryId])

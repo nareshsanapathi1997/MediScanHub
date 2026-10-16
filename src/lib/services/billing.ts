@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type BookingStatus } from "@prisma/client";
 import { prismaPrivileged } from "@/lib/db";
 import { withScope } from "@/lib/scope";
 import { DomainError } from "@/lib/errors";
@@ -66,11 +66,15 @@ async function capturePayment(providerOrderId: string, providerPaymentId: string
   if (!payment || !payment.invoice.booking) throw new DomainError("NOT_FOUND", "Payment order not found", 404);
   if (payment.amountPaise !== amountPaise) throw new DomainError("AMOUNT", "Payment amount does not match the invoice", 409);
   if (payment.status === "CAPTURED") return { duplicate: true as const, bookingId: payment.invoice.booking.id };
-  await withScope({ tenantId: payment.tenantId }, async (tx) => {
-    await tx.payment.update({ where: { id: payment.id }, data: { status: "CAPTURED", providerPaymentId } });
+  const applied = await withScope({ tenantId: payment.tenantId }, async (tx) => {
+    // Compare-and-set so a checkout verify and a webhook racing each other capture only once.
+    const claimed = await tx.payment.updateMany({ where: { id: payment.id, status: { not: "CAPTURED" } }, data: { status: "CAPTURED", providerPaymentId } });
+    if (claimed.count !== 1) return false;
     await tx.invoice.update({ where: { id: payment.invoiceId }, data: { status: "PAID" } });
-    if (payment.invoice.booking?.status === "PENDING") {
-      await tx.booking.update({ where: { id: payment.invoice.booking.id }, data: { status: "CONFIRMED" } });
+    const confirmed = payment.invoice.booking
+      ? await tx.booking.updateMany({ where: { id: payment.invoice.booking.id, status: "PENDING" }, data: { status: "CONFIRMED" } })
+      : { count: 0 };
+    if (payment.invoice.booking && confirmed.count === 1) {
       await tx.bookingStatusHistory.create({
         data: { tenantId: payment.tenantId, bookingId: payment.invoice.booking.id, fromStatus: "PENDING", toStatus: "CONFIRMED", reason: "Payment captured" },
       });
@@ -107,8 +111,24 @@ async function capturePayment(providerOrderId: string, providerPaymentId: string
         payload: confirmPayload,
       });
     }
-    await writeAudit(tx, { tenantId: payment.tenantId, action: "UPDATE", entityType: "Payment", entityId: payment.id, metadata: { providerPaymentId } });
+    await writeAudit(tx, { tenantId: payment.tenantId, action: "UPDATE", entityType: "Payment", entityId: payment.id, metadata: { providerPaymentId, bookingConfirmed: confirmed.count === 1 } });
+    return true;
   });
+  if (!applied) return { duplicate: true as const, bookingId: payment.invoice.booking.id };
+  // Money arrived for a visit that is no longer happening (cancelled or expired while the patient
+  // was paying). Refund it automatically; if the provider refuses, flag it for finance.
+  const current = await prismaPrivileged.booking.findUnique({ where: { id: payment.invoice.booking.id }, select: { id: true, status: true } });
+  if (current && current.status !== "CONFIRMED" && current.status !== "PENDING") {
+    try {
+      await executeRefund({ ...payment, providerPaymentId, invoice: { booking: current } }, payment.amountPaise, `Automatic refund: payment captured after the booking was ${current.status.toLowerCase()}`, null);
+      return { duplicate: false as const, bookingId: current.id, autoRefunded: true as const };
+    } catch (error) {
+      await withScope({ tenantId: payment.tenantId }, (tx) =>
+        writeAudit(tx, { tenantId: payment.tenantId, action: "UPDATE", entityType: "Payment", entityId: payment.id, metadata: { flag: "REFUND_REQUIRED", bookingStatus: current.status, error: error instanceof Error ? error.message : String(error) } }),
+      );
+      return { duplicate: false as const, bookingId: current.id, refundRequired: true as const };
+    }
+  }
   const patientId = payment.invoice.booking!.patientId;
   const credit = Math.floor(payment.amountPaise * 0.01);
   if (credit > 0) await creditWallet(patientId, credit, "1% loyalty on captured payment", payment.invoice.booking!.id);
@@ -146,8 +166,15 @@ export async function handlePaymentWebhook(rawBody: string, signature: string | 
   if (event.event !== "payment.captured") return { ignored: true as const, duplicate: false as const };
   const entity = event.payload?.payment?.entity;
   if (!entity?.order_id || !entity.id || entity.amount == null) throw new DomainError("WEBHOOK", "Captured payment payload is incomplete", 400);
-  const result = await capturePayment(entity.order_id, entity.id, entity.amount);
-  return { duplicate: result.duplicate, bookingId: result.bookingId };
+  let result: Awaited<ReturnType<typeof capturePayment>>;
+  try {
+    result = await capturePayment(entity.order_id, entity.id, entity.amount);
+  } catch (error) {
+    // Forget the event so the provider's retry is processed instead of being dropped as a duplicate.
+    await prismaPrivileged.webhookEvent.deleteMany({ where: { provider, eventId: event.id } });
+    throw error;
+  }
+  return result;
 }
 
 export async function applyWalletToInvoice(actor: Actor, invoiceId: string, amountPaise: number, reason: string) {
@@ -225,22 +252,52 @@ export async function refundPayment(actor: Actor, paymentId: string, amountPaise
   const already = payment.refunds.filter((refund) => refund.status === "SUCCEEDED").reduce((sum, refund) => sum + refund.amountPaise, 0);
   if (amountPaise <= 0 || amountPaise > payment.amountPaise - already) throw new DomainError("AMOUNT", "Refund amount exceeds the captured balance", 400);
   if (!reason.trim()) throw new DomainError("REASON", "A refund reason is required", 400);
-  const providerRefund = payment.provider === "manual" || !payment.providerPaymentId
-    ? { refundId: publicCode("RFND") }
-    : await paymentProvider().refund({ providerPaymentId: payment.providerPaymentId, amountPaise });
-  await withScope({ tenantId: payment.tenantId, userId: actor.userId }, async (tx) => {
-    await tx.refund.create({
-      data: { tenantId: payment.tenantId, paymentId: payment.id, amountPaise, status: "SUCCEEDED", reason, providerRefundId: providerRefund.refundId },
-    });
-    const full = already + amountPaise >= payment.amountPaise;
+  return executeRefund(payment, amountPaise, reason, actor.userId);
+}
+
+type RefundablePayment = { id: string; tenantId: string; amountPaise: number; provider: string; providerPaymentId: string | null; invoice: { booking: { id: string; status: BookingStatus } | null } };
+
+/** Lock, reserve, call the provider, finalize. Used by staff refunds and by automatic refunds (actorId null). */
+async function executeRefund(payment: RefundablePayment, amountPaise: number, reason: string, actorId: string | null) {
+  // 1. Under a row lock on the payment, re-check the balance and reserve the amount with a
+  //    PROCESSING refund. Concurrent refunds queue on the lock and see the reservation, so the
+  //    provider can never be asked to refund more than was captured.
+  const scope = actorId ? { tenantId: payment.tenantId, userId: actorId } : { tenantId: payment.tenantId };
+  const reserved = await withScope(scope, async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Payment" WHERE id = ${payment.id}::uuid FOR UPDATE`;
+    const held = await tx.refund.aggregate({ where: { paymentId: payment.id, status: { in: ["PROCESSING", "SUCCEEDED"] } }, _sum: { amountPaise: true } });
+    if (amountPaise > payment.amountPaise - (held._sum.amountPaise ?? 0)) throw new DomainError("AMOUNT", "Refund amount exceeds the captured balance", 409);
+    return tx.refund.create({ data: { tenantId: payment.tenantId, paymentId: payment.id, amountPaise, status: "PROCESSING", reason } });
+  });
+
+  // 2. Call the provider outside the transaction (no DB lock held across the network call).
+  let providerRefund: { refundId: string };
+  try {
+    providerRefund = payment.provider === "manual" || !payment.providerPaymentId
+      ? { refundId: publicCode("RFND") }
+      : await paymentProvider().refund({ providerPaymentId: payment.providerPaymentId, amountPaise });
+  } catch (error) {
+    await withScope(scope, (tx) => tx.refund.update({ where: { id: reserved.id }, data: { status: "FAILED" } }));
+    throw new DomainError("PAYMENT", `The payment provider refused the refund: ${error instanceof Error ? error.message : "unknown error"}`, 502);
+  }
+
+  // 3. Finalize under the lock again.
+  await withScope(scope, async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Payment" WHERE id = ${payment.id}::uuid FOR UPDATE`;
+    await tx.refund.update({ where: { id: reserved.id }, data: { status: "SUCCEEDED", providerRefundId: providerRefund.refundId } });
+    const done = await tx.refund.aggregate({ where: { paymentId: payment.id, status: "SUCCEEDED" }, _sum: { amountPaise: true } });
+    const full = (done._sum.amountPaise ?? 0) >= payment.amountPaise;
     if (full) await tx.payment.update({ where: { id: payment.id }, data: { status: "REFUNDED" } });
-    if (full && payment.invoice.booking && ["CANCELLED", "COMPLETED", "CONFIRMED"].includes(payment.invoice.booking.status)) {
-      await tx.booking.update({ where: { id: payment.invoice.booking.id }, data: { status: "REFUNDED" } });
-      await tx.bookingStatusHistory.create({
-        data: { tenantId: payment.tenantId, bookingId: payment.invoice.booking.id, fromStatus: payment.invoice.booking.status, toStatus: "REFUNDED", actorId: actor.userId, reason },
-      });
+    const booking = payment.invoice.booking;
+    if (full && booking && ["CANCELLED", "COMPLETED"].includes(booking.status)) {
+      const moved = await tx.booking.updateMany({ where: { id: booking.id, status: booking.status }, data: { status: "REFUNDED" } });
+      if (moved.count) {
+        await tx.bookingStatusHistory.create({
+          data: { tenantId: payment.tenantId, bookingId: booking.id, fromStatus: booking.status, toStatus: "REFUNDED", actorId, reason },
+        });
+      }
     }
-    await writeAudit(tx, { tenantId: payment.tenantId, actorId: actor.userId, action: "REFUND", entityType: "Payment", entityId: payment.id, metadata: { amountPaise, reason } });
+    await writeAudit(tx, { tenantId: payment.tenantId, actorId: actorId ?? undefined, action: "REFUND", entityType: "Payment", entityId: payment.id, metadata: { amountPaise, reason, refundId: reserved.id, automatic: !actorId } });
   });
   return { refundId: providerRefund.refundId };
 }

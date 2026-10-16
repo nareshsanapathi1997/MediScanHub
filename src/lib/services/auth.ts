@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { prismaPrivileged } from "@/lib/db";
 import { DomainError, errorMessage } from "@/lib/errors";
 import { hashPassword, verifyPassword, assertPasswordPolicy } from "@/lib/password";
@@ -63,7 +64,7 @@ async function roleByKey(key: string) {
 
 export async function login(input: { email: string; password: string; ip?: string | null; userAgent?: string | null }) {
   const email = input.email.trim().toLowerCase();
-  const limit = await rateLimitShared(`login:${input.ip ?? "local"}`, 20, 10 * 60 * 1000);
+  const limit = await rateLimitShared(`login:${input.ip ?? "local"}`, Number(process.env.LOGIN_RATE_LIMIT) || 20, 10 * 60 * 1000);
   if (!limit.ok) throw new DomainError("RATE_LIMIT", "Too many sign-in attempts. Try again shortly.", 429);
   const user = await prismaPrivileged.user.findUnique({ where: { email } });
   if (!user || user.deletedAt || user.status === "DISABLED" || user.status === "SUSPENDED") {
@@ -135,7 +136,7 @@ export async function revokeSession(sessionId: string, actorId: string) {
   });
 }
 
-export async function revokeAllSessions(userId: string) {
+async function revokeAllSessions(userId: string) {
   await prismaPrivileged.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
 }
 
@@ -386,9 +387,12 @@ export async function superAdminCount() {
 
 export async function bootstrapSuperAdmin(input: { name: string; email: string; password: string; secret: string }) {
   const envSecret = process.env.BOOTSTRAP_SECRET ?? process.env.CRON_SECRET;
-  if (!envSecret || input.secret !== envSecret) throw new DomainError("FORBIDDEN", "Bootstrap secret is incorrect", 403);
+  const given = Buffer.from(input.secret ?? "");
+  const expected = Buffer.from(envSecret ?? "");
+  if (!envSecret || given.length !== expected.length || !timingSafeEqual(given, expected)) throw new DomainError("FORBIDDEN", "Bootstrap secret is incorrect", 403);
   const existing = await superAdminCount();
-  if (existing > 0 && process.env.NODE_ENV === "production") {
+  // One-time setup: any signed-in user can reach this page, so it must close once an admin exists.
+  if (existing > 0) {
     throw new DomainError("FORBIDDEN", "A super admin already exists. Create additional admins from the platform desk.", 403);
   }
   policy(input.password);

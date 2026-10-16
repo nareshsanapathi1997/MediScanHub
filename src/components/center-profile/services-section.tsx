@@ -120,6 +120,6 @@ function ServiceCard({ service, state }: { service: CenterService; state: Profil
   );
 }
 
-export function EmptyCatalog({ text }: { text: string }) {
+function EmptyCatalog({ text }: { text: string }) {
   return <p className="rounded-2xl border border-dashed bg-card px-6 py-8 text-center text-sm text-muted-foreground">{text}</p>;
 }

@@ -15,7 +15,7 @@ export default async function PlansPage() {
   const plans = await listPlans();
   return (
     <>
-      <PageHeader eyebrow="Billing" title="Subscription plans" description="These prices bill the center. They are separate from patient invoices. Empty limits mean unlimited." />
+      <PageHeader eyebrow="Billing" title="Subscription plans" description="Monthly plans that centers pay for. Separate from patient bills. An empty limit means no limit." />
       <div className="grid gap-4">
         {plans.map((plan) => (
           <FormBox key={plan.id} action={editPlanAction} submit={`Save ${plan.name}`}>

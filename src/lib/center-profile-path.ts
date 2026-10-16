@@ -9,7 +9,3 @@ export function centerProfileSlugFromPath(pathname: string): string | null {
   if (!slug || RESERVED.has(slug)) return null;
   return slug;
 }
-
-export function isCenterProfilePath(pathname: string): boolean {
-  return centerProfileSlugFromPath(pathname) !== null;
-}
