@@ -14,14 +14,14 @@ test("patient books a CBC, pays, and the visit is confirmed", async ({ page, isM
   await page.goto("/centers/apex-diagnostics?branch=40000000-0000-4000-8000-000000000001");
   await expect(page.getByRole("heading", { level: 1, name: "Apex Diagnostics" })).toBeVisible();
   const cbc = page.locator("li").filter({ has: page.getByRole("heading", { name: "Complete Blood Count" }) });
-  await cbc.getByRole("link", { name: /Add to booking/ }).click();
+  await cbc.getByRole("link", { name: /^Add Complete Blood Count/ }).click();
   await expect(page).toHaveURL(/service=[0-9a-f]/, { timeout: 15000 });
   await expect(cbc.getByRole("link", { name: /Added/ })).toBeVisible({ timeout: 15000 });
   const selected = new URL(page.url());
   const book = page.locator("#book");
   // Pick the first upcoming IST day with an open center slot.
   for (const offset of [0, 1, 2, 3, 4]) {
-    await expect(book.getByText("Estimated total")).toBeVisible();
+    await expect(page.locator("#selection-panel").getByText("Estimated total")).toBeVisible();
     if (await book.getByRole("link", { name: /left/ }).count()) break;
     const day = new Date(Date.now() + 5.5 * 3600e3 + (offset + 1) * 864e5).toISOString().slice(0, 10);
     selected.searchParams.set("day", day);

@@ -1,17 +1,16 @@
 import { forgotAction } from "@/server/actions";
 import { FormBox } from "@/components/form-box";
 import { StickyInput } from "@/components/sticky-field";
-import { PageHeader } from "@/components/widgets";
+import { AuthShell } from "@/components/auth-shell";
 
 export const metadata = { title: "Forgot password" };
 
 export default function ForgotPage() {
   return (
-    <main className="mx-auto grid max-w-md gap-6 px-4 py-10">
-      <PageHeader eyebrow="Recovery" title="Forgot password" description="Enter the email you used to register. We will send you a link to set a new password. On this demo the link is shown on this page." />
+    <AuthShell eyebrow="Recovery" title="Forgot password" description="Enter the email you used to register. We will send you a link to set a new password. On this demo the link is shown on this page.">
       <FormBox action={forgotAction} submit="Send reset link" success="If this email is registered, we have sent a reset link. Please check your inbox and spam folder.">
         <label className="field">Email<StickyInput name="email" type="email" required autoComplete="email" /></label>
       </FormBox>
-    </main>
+    </AuthShell>
   );
 }

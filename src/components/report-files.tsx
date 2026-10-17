@@ -2,9 +2,11 @@ import { FileImage, FileText, Upload, Trash2 } from "@/components/icons";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/widgets";
-import { formatBytes, formatWhen } from "@/lib/format";
+import { formatBytes, formatDate, formatWhen } from "@/lib/format";
 import { removeReportFileAction, uploadReportFileAction } from "@/server/actions";
 import { REPORT_FILE_MAX_MB } from "@/lib/services/report-files";
+import { DicomUploadForm } from "@/components/dicom-upload";
+import type { DicomMeta } from "@/lib/dicom";
 
 export type ReportFileRow = {
   id: string;
@@ -14,7 +16,23 @@ export type ReportFileRow = {
   kind: string;
   createdAt: Date;
   bookingItem: { name: string } | null;
+  dicomMeta?: unknown;
 };
+
+function dicomSummary(value: unknown) {
+  const meta = value as DicomMeta | null | undefined;
+  if (!meta || typeof meta !== "object" || !("imageCount" in meta)) return null;
+  const parts = [
+    `DICOM${meta.format === "zip" ? " study (zip)" : ""}`,
+    meta.modalities.length ? meta.modalities.join(", ") : null,
+    meta.studyDate ? `study date ${formatDate(new Date(`${meta.studyDate}T00:00:00+05:30`))}` : null,
+    meta.bodyParts.length ? meta.bodyParts.join(", ").toLowerCase() : null,
+    `${meta.seriesCount} series`,
+    `${meta.imageCount} image${meta.imageCount === 1 ? "" : "s"}`,
+    meta.studyCount > 1 ? `${meta.studyCount} studies` : null,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
 
 export const KIND_LABEL: Record<string, string> = {
   LAB_REPORT: "Lab report (scanned)",
@@ -28,7 +46,8 @@ export function ReportFileList({ files, onRemove }: { files: ReportFileRow[]; on
   return (
     <ul className="grid gap-2 text-sm">
       {files.map((file) => {
-        const Icon = file.contentType.startsWith("image/") ? FileImage : FileText;
+        const dicom = dicomSummary(file.dicomMeta);
+        const Icon = file.contentType.startsWith("image/") || dicom ? FileImage : FileText;
         return (
           <li key={file.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-background px-3 py-2">
             <span className="flex min-w-0 items-center gap-2">
@@ -38,11 +57,12 @@ export function ReportFileList({ files, onRemove }: { files: ReportFileRow[]; on
                 <span className="block text-xs text-muted-foreground">
                   {KIND_LABEL[file.kind] ?? file.kind}{file.bookingItem ? ` · ${file.bookingItem.name}` : ""} · {formatBytes(file.sizeBytes)} · {formatWhen(file.createdAt)}
                 </span>
+                {dicom ? <span className="block text-xs text-foreground/80">{dicom}</span> : null}
               </span>
             </span>
             <span className="flex items-center gap-2">
               <a className="font-medium text-primary underline-offset-2 hover:underline" href={`/api/v1/report-files/${file.id}/open`} target="_blank" rel="noopener">
-                Open<span className="sr-only"> {file.fileName}</span>
+                {dicom ? "Download" : "Open"}<span className="sr-only"> {file.fileName}</span>
               </a>
               {onRemove ? (
                 <ActionForm action={removeReportFileAction}>
@@ -101,7 +121,9 @@ export function ReportFilesPanel({
           ) : items.length === 1 ? <input type="hidden" name="bookingItemId" value={items[0]!.id} /> : null}
           <Button type="submit" className="w-full sm:w-fit"><Upload className="size-4" aria-hidden />Upload file</Button>
         </ActionForm>
-      ) : canManage ? (
+      ) : null}
+      {canManage && open && imaging ? <DicomUploadForm reportId={reportId} items={items} /> : null}
+      {canManage && !open ? (
         <p className="mt-3 text-sm text-muted-foreground">Files are locked after verification. Send the report back to change them.</p>
       ) : null}
     </Panel>

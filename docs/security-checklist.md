@@ -3,7 +3,7 @@
 ## In the application
 
 - Passwords are bcrypt hashes. Payment secrets stay in server env.
-- Session cookie is HTTP-only. CSRF cookie is readable by the page and required on cookie-authenticated mutations.
+- Session cookie is HTTP-only. CSRF cookie is readable by the page. Every API mutation (POST, PUT, PATCH, DELETE, uploads) goes through `checkCsrf`: fetch-metadata and Origin checks plus a double-submit token that must also match the session secret. Tests: `tests/csrf.test.ts`, `e2e/csrf.spec.ts`.
 - Login is rate limited per IP and locks after five failures.
 - Sessions expire after 12 hours idle or 7 days absolute, and slide when last seen is older than 5 minutes. Password change, logout, suspension, and account deletion revoke sessions.
 - Every clinical query derives the tenant from the session or from the branch row, then sets `app.tenant_id` inside the transaction. The runtime role cannot bypass row-level security.

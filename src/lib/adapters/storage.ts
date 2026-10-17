@@ -1,6 +1,8 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { createReadStream } from "fs";
+import { copyFile, mkdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
+import { Readable } from "stream";
 import { getEnv } from "@/lib/env";
 import { readSignedPayload, signPayload } from "@/lib/crypto";
 import { DomainError } from "@/lib/errors";
@@ -38,11 +40,15 @@ async function putLocal(key: string, body: Buffer) {
   await writeFile(target, body);
 }
 
-async function getLocal(key: string) {
+function localPath(key: string) {
   const root = path.resolve(process.cwd(), getEnv().LOCAL_STORAGE_DIR);
   const target = path.resolve(root, key);
-  if (!target.startsWith(root)) throw new DomainError("STORAGE", "Invalid storage key", 400);
-  return readFile(target);
+  if (!target.startsWith(root + path.sep)) throw new DomainError("STORAGE", "Invalid storage key", 400);
+  return target;
+}
+
+async function getLocal(key: string) {
+  return readFile(localPath(key));
 }
 
 function s3() {
@@ -73,6 +79,32 @@ export async function getObject(key: string) {
     return Buffer.from(bytes);
   }
   return getLocal(key);
+}
+
+/** Stores a file that is already on disk (large uploads are streamed to a temp file first, never held in memory). */
+export async function putObjectFromFile(key: string, filePath: string, contentType: string, size: number) {
+  const env = getEnv();
+  if (env.STORAGE_PROVIDER === "s3") {
+    await s3().send(new PutObjectCommand({ Bucket: env.S3_BUCKET, Key: key, Body: createReadStream(filePath), ContentLength: size, ContentType: contentType }));
+    return;
+  }
+  const target = localPath(key);
+  await mkdir(path.dirname(target), { recursive: true });
+  await copyFile(filePath, target);
+}
+
+/** Streams a stored file to the browser without loading it all into memory. */
+export async function openObjectStream(key: string): Promise<{ stream: ReadableStream<Uint8Array>; size: number }> {
+  const env = getEnv();
+  if (env.STORAGE_PROVIDER === "s3") {
+    const response = await s3().send(new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: key }));
+    if (!response.Body) throw new DomainError("STORAGE", "Empty object", 404);
+    return { stream: response.Body.transformToWebStream() as ReadableStream<Uint8Array>, size: Number(response.ContentLength ?? 0) };
+  }
+  const target = localPath(key);
+  const info = await stat(target).catch(() => null);
+  if (!info) throw new DomainError("NOT_FOUND", "File not found", 404);
+  return { stream: Readable.toWeb(createReadStream(target)) as ReadableStream<Uint8Array>, size: info.size };
 }
 
 export function signReportLink(reportId: string, version: number, ttlSeconds = 300) {

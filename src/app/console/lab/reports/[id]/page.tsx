@@ -12,7 +12,7 @@ import { formatWhen, titleCase } from "@/lib/format";
 import { Download, ShieldCheck } from "@/components/icons";
 import { buttonVariants } from "@/components/ui/button";
 import { ConfirmForm } from "@/components/confirm-form";
-import { AccessDenied, Breadcrumbs, PageHeader, Panel, StatusPill } from "@/components/widgets";
+import { AccessDenied, Breadcrumbs, PageHeader, Panel, StatusPill, Steps } from "@/components/widgets";
 
 export const metadata = { title: "Report" };
 
@@ -34,7 +34,7 @@ async function ReportBody({ id }: { id: string }) {
     throw error;
   }
   const files = await listReportFiles(actor, report.id);
-  const next = REPORT_TRANSITIONS[report.status].filter((status) => hasPermission(actor, permissionForReportTransition(status), actor.activeTenantId));
+  const next = REPORT_TRANSITIONS[report.status].filter((status) => hasPermission(actor, permissionForReportTransition(status, Boolean(report.imagingOrder && !report.labOrder)), actor.activeTenantId));
   const released = report.status === "RELEASED" || report.status === "AMENDED";
   const steps = ["DRAFT", "ENTERED", "VERIFIED", "APPROVED", "RELEASED"] as const;
   const reached = Math.max(0, steps.indexOf(report.status === "AMENDED" ? "RELEASED" : report.status === "REJECTED" ? "ENTERED" : report.status));
@@ -43,16 +43,9 @@ async function ReportBody({ id }: { id: string }) {
   const label: Record<string, string> = { ENTERED: "Submit for verification", VERIFIED: "Verify", APPROVED: "Approve", RELEASED: "Release to patient", REJECTED: "Send back", AMENDED: "Amend" };
   return (
     <>
-      <Breadcrumbs items={[{ href: "/console/lab", label: "Laboratory" }, { label: report.booking.publicCode }]} />
+      <Breadcrumbs items={[report.imagingOrder && !report.labOrder ? { href: "/console/imaging", label: "Scans" } : { href: "/console/lab", label: "Laboratory" }, { label: report.booking.publicCode }]} />
       <PageHeader eyebrow={`Report · ${report.booking.publicCode}`} title={report.title} description={`${report.booking.patient.user.name} · ${report.booking.branch.name}`} actions={<StatusPill value={report.status} />} />
-      <ol className="surface grid grid-cols-5 gap-1 p-3 text-center text-xs" aria-label="Review progress">
-        {steps.map((step, index) => (
-          <li key={step} className="grid justify-items-center gap-1.5" aria-current={index === reached ? "step" : undefined}>
-            <span className={`grid size-7 place-items-center rounded-full text-[0.7rem] font-semibold ${index < reached ? "bg-primary text-primary-foreground" : index === reached ? "bg-primary/15 text-primary ring-2 ring-primary" : "bg-muted text-muted-foreground"}`}>{index + 1}</span>
-            <span className={index <= reached ? "font-medium" : "text-muted-foreground"}>{titleCase(step)}</span>
-          </li>
-        ))}
-      </ol>
+      <Steps label="Review progress" steps={steps.map((step) => titleCase(step))} current={reached} complete={report.status === "RELEASED" || report.status === "AMENDED"} />
       {report.status === "REJECTED" ? <p role="status" className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">Sent back for correction. Fix the results, then submit again.</p> : null}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="grid gap-4 lg:col-span-2">

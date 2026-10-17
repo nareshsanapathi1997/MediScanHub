@@ -1,12 +1,13 @@
 import Link from "next/link";
 import type { BookingStatus } from "@prisma/client";
 import { BOOKING_TRANSITIONS } from "@/domain/state";
+import { modalityLabel } from "@/domain/scan-scheduling";
 import { hasPermission, type Actor } from "@/domain/actor";
 import { bookingTransitionAction, payAction, rescheduleAction } from "@/server/actions";
-import { formatInr, formatWhen, titleCase } from "@/lib/format";
+import { formatInr, formatWhen, titleCase, sentenceCase } from "@/lib/format";
 import { Building2, CalendarClock, Home, MapPin, ReceiptText } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Breadcrumbs, Panel, StatusPill } from "@/components/widgets";
+import { Breadcrumbs, Facts, Panel, StatusPill, Steps } from "@/components/widgets";
 import { FormBox } from "@/components/form-box";
 import { ConfirmForm } from "@/components/confirm-form";
 import type { getBooking } from "@/lib/services/booking";
@@ -25,7 +26,9 @@ export function BookingView({
   back,
   crumbs,
   reports = [],
+  extra,
 }: {
+  extra?: React.ReactNode;
   booking: Booking;
   actor: Actor;
   reports?: BookingReports;
@@ -35,6 +38,7 @@ export function BookingView({
 }) {
   const mine = actor.patientId === booking.patientId;
   const staff = hasPermission(actor, "bookings.manage", booking.tenantId);
+  const referralDoctor = booking.referralUserId === actor.userId && hasPermission(actor, "referrals.read", booking.tenantId);
   const canDownloadRx = Boolean(booking.prescriptionStorageKey) && (mine || staff || hasPermission(actor, "bookings.read", booking.tenantId));
   const next = BOOKING_TRANSITIONS[booking.status].filter((status) => {
     if (status === "REFUNDED") return false; // refunds go through Finance so money and status move together
@@ -43,6 +47,7 @@ export function BookingView({
     return staff;
   });
   const payable = booking.status === "PENDING" && mine && booking.invoice && booking.invoice.status !== "PAID";
+  const scanPrep = [...new Set(booking.items.filter((item) => item.service?.kind === "IMAGING" && item.service.preparation).map((item) => `${item.name}: ${item.service!.preparation}`))];
   const visitFor = booking.dependent
     ? `${booking.dependent.name} (${booking.dependent.relation}) · booked by ${booking.patient.user.name}`
     : booking.patient.user.name;
@@ -50,6 +55,7 @@ export function BookingView({
   const reportsOpen = booking.status === "IN_PROGRESS";
   const canLab = hasPermission(actor, "samples.read", booking.tenantId) && actor.activeTenantId === booking.tenantId;
   const canReport = actor.activeTenantId === booking.tenantId && ["reports.verify", "imaging.report"].some((permission) => hasPermission(actor, permission, booking.tenantId));
+  const releasedViewer = (mine || referralDoctor) && !staff && !canLab && !canReport;
   return (
     <div className="grid gap-6">
       <Breadcrumbs items={crumbs} />
@@ -60,55 +66,53 @@ export function BookingView({
           <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><MapPin className="size-4" aria-hidden />{booking.branch.name}</span>
             <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" aria-hidden />{formatWhen(booking.scheduledAt)}</span>
-            <span className="inline-flex items-center gap-1.5">{booking.visitType === "HOME_COLLECTION" ? <Home className="size-4" aria-hidden /> : <Building2 className="size-4" aria-hidden />}{titleCase(booking.visitType)}</span>
+            <span className="inline-flex items-center gap-1.5">{booking.visitType === "HOME_COLLECTION" ? <Home className="size-4" aria-hidden /> : <Building2 className="size-4" aria-hidden />}{sentenceCase(booking.visitType)}</span>
           </p>
         </div>
         <StatusPill value={booking.status} />
       </div>
+      <VisitSteps status={booking.status} />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="grid content-start gap-4 lg:col-span-2">
-          <Panel title="Services" description={`Patient: ${visitFor}`}>
+          {scanPrep.length || booking.slot?.equipment ? (
+            <Panel title="Before your scan" description="Please read this before you come.">
+              {booking.slot?.equipment ? (
+                <p className="text-sm">
+                  <span className="font-medium">{modalityLabel(booking.slot.equipment.modality)}</span> in {booking.slot.equipment.room} ({booking.slot.equipment.name}) · {formatTime(booking.slot.startsAt)} to {formatTime(booking.slot.endsAt)} IST
+                </p>
+              ) : null}
+              <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm">
+                {scanPrep.map((line) => <li key={line}>{line}</li>)}
+                <li>Come 15 minutes before your slot. Bring your prescription and any old scans.</li>
+              </ul>
+            </Panel>
+          ) : null}
+          <Panel title="Services" description={`${booking.items.length} item${booking.items.length === 1 ? "" : "s"} · Patient: ${visitFor}`}>
             <ul className="divide-y text-sm">
               {booking.items.map((item) => (
                 <li key={item.id} className="flex justify-between gap-3 py-2.5"><span>{item.name}</span><span className="tabular-nums">{formatInr(item.pricePaise)}</span></li>
               ))}
-              <li className="flex justify-between gap-3 pt-3 font-semibold"><span>Catalog total</span><span className="tabular-nums">{formatInr(booking.totalPaise)}</span></li>
+              <li className="flex justify-between gap-3 pt-3 font-semibold"><span>Total</span><span className="tabular-nums">{formatInr(booking.totalPaise)}</span></li>
             </ul>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <ReceiptText className="size-4" aria-hidden />Invoice {booking.invoice?.number ?? "pending"} {booking.invoice ? <StatusPill value={booking.invoice.status} /> : null}
-            </div>
             {booking.invoice ? (
-              <div className="mt-2 grid gap-1 text-sm">
-                {booking.invoice.walletRedeemPaise > 0 ? <p className="text-muted-foreground">Wallet applied: {formatInr(booking.invoice.walletRedeemPaise)}</p> : null}
-                <p className="font-medium">Amount due {formatInr(booking.invoice.totalPaise)}</p>
-                {booking.invoice.insurancePolicy ? (
-                  <p className="text-muted-foreground">
-                    Insurance: {booking.invoice.insurancePolicy.provider} · {booking.invoice.insurancePolicy.policyNumber}
-                    {booking.invoice.insurancePolicy.tpaName ? ` · TPA ${booking.invoice.insurancePolicy.tpaName}` : ""}
-                  </p>
-                ) : null}
-                {booking.invoice.tpaReference ? <p className="text-muted-foreground">TPA reference: {booking.invoice.tpaReference}</p> : null}
-                {booking.invoice.tpaClaims?.length ? (
-                  <p className="text-muted-foreground">TPA claim: {booking.invoice.tpaClaims[0]!.status.toLowerCase()} · {formatInr(booking.invoice.tpaClaims[0]!.claimedPaise)}</p>
-                ) : null}
+              <div className="-mx-5 -mb-5 mt-4 grid gap-3 rounded-b-2xl border-t bg-muted/30 px-5 py-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2 text-muted-foreground"><ReceiptText className="size-4" aria-hidden />Invoice <span className="font-mono text-foreground">{booking.invoice.number}</span></span>
+                  <StatusPill value={booking.invoice.status} />
+                </div>
+                <Facts items={[
+                  { label: booking.invoice.status === "PAID" ? "Amount paid" : "Amount due", value: formatInr(booking.invoice.totalPaise) },
+                  ...(booking.invoice.walletRedeemPaise > 0 ? [{ label: "Wallet applied", value: formatInr(booking.invoice.walletRedeemPaise) }] : []),
+                  ...(booking.invoice.insurancePolicy ? [{ label: "Insurance", value: `${booking.invoice.insurancePolicy.provider} · ${booking.invoice.insurancePolicy.policyNumber}${booking.invoice.insurancePolicy.tpaName ? ` · TPA ${booking.invoice.insurancePolicy.tpaName}` : ""}` }] : []),
+                  ...(booking.invoice.tpaReference ? [{ label: "TPA reference", value: booking.invoice.tpaReference }] : []),
+                  ...(booking.invoice.tpaClaims?.length ? [{ label: "TPA claim", value: `${sentenceCase(booking.invoice.tpaClaims[0]!.status)} · ${formatInr(booking.invoice.tpaClaims[0]!.claimedPaise)}` }] : []),
+                ]} />
               </div>
-            ) : null}
-            {staff && booking.patient.chronicConditions.length > 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">Chronic: {booking.patient.chronicConditions.map((row) => row.condition).join("; ")}</p>
-            ) : null}
-            {booking.notes ? <p className="mt-2 text-sm whitespace-pre-wrap">Notes: {booking.notes}</p> : null}
-            {canDownloadRx ? (
-              <p className="mt-2 text-sm">
-                Prescription: {booking.prescriptionFileName ?? "uploaded file"}{" "}
-                <a className="text-primary" href={`/api/v1/bookings/${booking.id}/prescription`}>Download</a>
-              </p>
-            ) : null}
-            {booking.address ? <p className="mt-2 text-sm"><span className="text-muted-foreground">Pickup address:</span> {booking.address}</p> : null}
-            {booking.collection ? <p className="mt-2 flex flex-wrap items-center gap-2 text-sm"><span className="text-muted-foreground">Home collection</span><StatusPill value={booking.collection.status} />{booking.collection.assignee ? <span>· {booking.collection.assignee.name}</span> : null}</p> : null}
+            ) : <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><ReceiptText className="size-4" aria-hidden />Invoice pending</p>}
           </Panel>
-          {reports.length > 0 || mine ? (
-            <Panel title="Reports" description={mine && !staff ? "Your reports appear here after the center releases them. Links open for 5 minutes and only for you." : "Open a report to enter results, upload files or review."}>
-              {reports.length === 0 ? <p className="text-sm text-muted-foreground">No report is ready yet. We will send you a message when it is.</p> : (
+          {reports.length > 0 || mine || referralDoctor ? (
+            <Panel title="Reports" description={releasedViewer ? (referralDoctor ? "Released reports for patients who named you. Unreleased results stay hidden." : "Your reports appear here after the center releases them. Links open for 5 minutes and only for you.") : "Open a report to enter results, upload files or review."}>
+              {reports.length === 0 ? <p className="text-sm text-muted-foreground">{referralDoctor ? "No released report yet for this visit." : "No report is ready yet. We will send you a message when it is."}</p> : (
                 <ul className="grid gap-3">
                   {reports.map((report) => (
                     <li key={report.id} className="grid gap-2 rounded-xl border p-3">
@@ -138,7 +142,7 @@ export function BookingView({
             </Panel>
           ) : null}
           {next.length > 0 ? (
-            <Panel title={mine && !staff ? "Manage your visit" : "Move this visit"} description={reportsOpen ? "A visit completes only after every report is released." : paid && next.includes("CANCELLED") ? "This visit is paid. After cancelling, issue the refund from Finance." : undefined}>
+            <Panel title={mine && !staff ? "Manage your visit" : "Next step"} description={reportsOpen ? "A visit completes only after every report is released." : paid && next.includes("CANCELLED") ? "This visit is paid. After cancelling, issue the refund from Finance." : undefined}>
               <div className="flex flex-wrap gap-3">
                 {next.map((status) => (
                   <ConfirmForm key={status} action={bookingTransitionAction} variant={status === "CANCELLED" ? "destructive" : "default"} confirm={status === "CANCELLED" ? `Cancel ${booking.publicCode}? The slot is released.` : `${labelFor(status)} for ${booking.publicCode}?`} submit={labelFor(status)}>
@@ -170,6 +174,19 @@ export function BookingView({
           ) : null}
         </div>
         <div className="grid content-start gap-4">
+          <Panel title={booking.dependent ? "Patient (family member)" : "Patient"}>
+            <div className="grid gap-3 text-sm">
+              <div className="flex items-center gap-3">
+                <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 font-semibold text-primary">{initialsOf(booking.dependent?.name ?? booking.patient.user.name)}</span>
+                <span className="grid min-w-0"><span className="truncate font-medium">{booking.dependent?.name ?? booking.patient.user.name}</span>{booking.dependent ? <span className="text-xs text-muted-foreground">{booking.dependent.relation} of {booking.patient.user.name}</span> : null}</span>
+              </div>
+              {booking.address ? <p className="flex items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden /><span><span className="block text-xs text-muted-foreground">Pickup address</span>{booking.address}</span></p> : null}
+              {booking.collection ? <p className="flex flex-wrap items-center gap-2"><Home className="size-4 text-muted-foreground" aria-hidden />Home collection <StatusPill value={booking.collection.status} />{booking.collection.assignee ? <span className="text-muted-foreground">· {booking.collection.assignee.name}</span> : null}</p> : null}
+              {staff && booking.patient.chronicConditions.length > 0 ? <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs"><span className="font-medium">Chronic:</span> {booking.patient.chronicConditions.map((row) => row.condition).join("; ")}</p> : null}
+              {booking.notes ? <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs whitespace-pre-wrap"><span className="font-medium">Notes:</span> {booking.notes}</p> : null}
+              {canDownloadRx ? <a className={buttonVariants({ variant: "outline", size: "sm" })} href={`/api/v1/bookings/${booking.id}/prescription`}><Download className="size-4" aria-hidden />Prescription{booking.prescriptionFileName ? ` (${booking.prescriptionFileName})` : ""}</a> : null}
+            </div>
+          </Panel>
           {booking.labOrder?.samples.length ? (
             <Panel title="Samples">
               <ul className="grid gap-2 text-sm">
@@ -200,6 +217,7 @@ export function BookingView({
               ))}
             </ol>
           </Panel>
+          {extra}
           <Link href={back} className="text-sm font-medium text-primary">← Back</Link>
         </div>
       </div>
@@ -218,4 +236,23 @@ function labelFor(status: BookingStatus) {
   if (status === "CANCELLED") return "Cancel visit";
   if (status === "CONFIRMED") return "Confirm";
   return status;
+}
+
+function initialsOf(name: string) {
+  return name.replace(/^Synth(etic)?\s+(Patient\s+)?/i, "").split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+}
+
+const STEPS: Array<{ status: BookingStatus; label: string }> = [
+  { status: "PENDING", label: "Booked" },
+  { status: "CONFIRMED", label: "Confirmed" },
+  { status: "CHECKED_IN", label: "Checked in" },
+  { status: "IN_PROGRESS", label: "In progress" },
+  { status: "COMPLETED", label: "Completed" },
+];
+
+/** Progress through the normal visit path. Cancelled, no-show and refunded visits show a single banner instead. */
+function VisitSteps({ status }: { status: BookingStatus }) {
+  const index = STEPS.findIndex((step) => step.status === status);
+  if (index < 0) return <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">This visit is <span className="font-medium">{sentenceCase(status)}</span>.</p>;
+  return <Steps label="Visit progress" steps={STEPS.map((step) => step.label)} current={index} complete={status === "COMPLETED"} />;
 }

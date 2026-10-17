@@ -219,6 +219,12 @@ async function loadReport(actor: Actor, id: string) {
     const staffElsewhere = Boolean(actor.activeTenantId) && ["samples.read", "reports.verify", "reports.approve", "reports.release", "imaging.report"].some((permission) => hasPermission(actor, permission, actor.activeTenantId));
     if (!staffElsewhere) throw new DomainError("NOT_FOUND", "Report not found", 404);
   }
+  // Named referral doctors may open released reports on bookings that name them (same scope as the doctor list).
+  const asReferral = await prismaPrivileged.medicalReport.findFirst({
+    where: { id, status: { in: ["RELEASED", "AMENDED"] }, booking: { referralUserId: actor.userId } },
+    include: reportInclude,
+  });
+  if (asReferral && hasPermission(actor, "referrals.read", asReferral.tenantId)) return asReferral;
   const scope = scopeOf(actor);
   const allowed = ["samples.read", "reports.verify", "reports.approve", "reports.release", "imaging.report"].some((permission) => hasPermission(actor, permission, scope.tenantId));
   if (!allowed) throw new DomainError("NOT_FOUND", "Report not found", 404);
@@ -263,6 +269,19 @@ export async function listReports(actor: Actor, status?: ReportStatus) {
   );
 }
 
+/** A patient's released reports, one page at a time. */
+export async function listPatientReportsPage(actor: Actor, paging: { skip: number; take: number }) {
+  if (!actor.patientId) throw new DomainError("PATIENT_REQUIRED", "Sign in as a patient", 403);
+  const where = { booking: { patientId: actor.patientId }, status: { in: ["RELEASED" as const, "AMENDED" as const] } };
+  return withScope({ userId: actor.userId, patientId: actor.patientId }, async (tx) => {
+    const [items, total] = await Promise.all([
+      tx.medicalReport.findMany({ where, include: reportInclude, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+      tx.medicalReport.count({ where }),
+    ]);
+    return { items, total };
+  });
+}
+
 function reportRows(report: Awaited<ReturnType<typeof loadReport>>) {
   const rows: Array<{ name: string; value: string; unit: string; range: string; flag: string }> = [];
   for (const sample of report.labOrder?.samples ?? []) {
@@ -288,10 +307,10 @@ function reportRows(report: Awaited<ReturnType<typeof loadReport>>) {
 
 export async function transitionReport(actor: Actor, reportId: string, to: ReportStatus, comment?: string) {
   const report = await loadReport(actor, reportId);
-  if (actor.patientId === report.booking.patientId && !hasPermission(actor, permissionForReportTransition(to), report.tenantId)) {
+  if (actor.patientId === report.booking.patientId && !hasPermission(actor, permissionForReportTransition(to, Boolean(report.imagingOrder && !report.labOrder)), report.tenantId)) {
     throw new DomainError("FORBIDDEN", "Patients cannot change report status", 403);
   }
-  assertPermission(actor, permissionForReportTransition(to), report.tenantId);
+  assertPermission(actor, permissionForReportTransition(to, Boolean(report.imagingOrder && !report.labOrder)), report.tenantId);
   if (report.imagingOrder && !report.labOrder && actor.memberships.some((membership) => membership.tenantId === report.tenantId && membership.roleKey === "PATHOLOGIST") && !hasPermission(actor, "imaging.report", report.tenantId)) {
     // Pathologists may approve imaging in this deployment because they hold reports.approve.
   }

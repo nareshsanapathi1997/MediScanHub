@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormBoxState } from "@/components/form-box";
 
 type Option = { id: number; name: string };
@@ -73,15 +73,22 @@ export function LocationPicker({
     return [{ id: countryId, name: label }, ...countries];
   }, [countries, countryId, merged.country, defaultCountryId]);
 
+  // Latest values for the loaders below, which should re-run only when the country, state or search changes.
+  const latest = useRef({ mergedStateId: merged.stateId, mergedCityId: merged.cityId, stateId });
+  useEffect(() => {
+    latest.current = { mergedStateId: merged.stateId, mergedCityId: merged.cityId, stateId };
+  });
+
   useEffect(() => {
     if (!countryId) return;
     setLoadingStates(true);
     void load<Option[]>(`/api/v1/geo/states?countryId=${countryId}`)
       .then((rows) => {
         setStates(rows);
-        if (merged.stateId && rows.some((row) => row.id === Number(merged.stateId))) {
-          setStateId(Number(merged.stateId));
-        } else if (!rows.some((row) => row.id === stateId)) {
+        const { mergedStateId, stateId: currentStateId } = latest.current;
+        if (mergedStateId && rows.some((row) => row.id === Number(mergedStateId))) {
+          setStateId(Number(mergedStateId));
+        } else if (!rows.some((row) => row.id === currentStateId)) {
           setStateId(0);
           setCityId(0);
         }
@@ -100,8 +107,9 @@ export function LocationPicker({
     void load<Option[]>(path)
       .then((rows) => {
         setCities(rows);
-        if (merged.cityId && rows.some((row) => row.id === Number(merged.cityId))) {
-          setCityId(Number(merged.cityId));
+        const { mergedCityId } = latest.current;
+        if (mergedCityId && rows.some((row) => row.id === Number(mergedCityId))) {
+          setCityId(Number(mergedCityId));
         }
       })
       .finally(() => setLoadingCities(false));

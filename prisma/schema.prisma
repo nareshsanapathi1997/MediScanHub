@@ -441,6 +441,10 @@ model Branch {
   email          String?
   opensAt        String    @default("07:00")
   closesAt       String    @default("20:00")
+  /// Seven entries, Sunday first: {"opensAt":"HH:MM","closesAt":"HH:MM"} or null when closed. Null column = daily opensAt/closesAt.
+  weeklyHours    Json?
+  /// IST dates (YYYY-MM-DD) when the branch is closed.
+  holidays       String[]  @default([])
   homeCollection Boolean   @default(false)
   active         Boolean   @default(true)
   latitude       Float?
@@ -1016,6 +1020,8 @@ model ReportFile {
   sizeBytes     Int
   storageKey    String
   checksum      String
+  /// Basic study facts read from DICOM headers (modality, study date, series and image counts). Never patient identifiers.
+  dicomMeta     Json?
   uploadedById  String         @db.Uuid
   uploadedBy    User           @relation(fields: [uploadedById], references: [id])
   createdAt     DateTime       @default(now())
@@ -1033,11 +1039,14 @@ model Equipment {
   name      String
   modality  String
   room      String
+  /// Default length of one scan slot on this machine, in minutes.
+  slotMinutes Int    @default(20)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   schedules EquipmentSchedule[]
+  blocks    EquipmentBlock[]
   slots     AvailabilitySlot[]
   studies   ImagingStudy[]
 
@@ -1053,6 +1062,21 @@ model EquipmentSchedule {
   staff       User?     @relation(fields: [staffUserId], references: [id])
   startsAt    DateTime
   endsAt      DateTime
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, equipmentId, startsAt])
+}
+
+/// Time when a scan machine cannot be used (service, calibration, breakdown). Slots that overlap a block cannot be booked.
+model EquipmentBlock {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  equipmentId String    @db.Uuid
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  startsAt    DateTime
+  endsAt      DateTime
+  reason      String
+  createdById String    @db.Uuid
   createdAt   DateTime  @default(now())
 
   @@index([tenantId, equipmentId, startsAt])

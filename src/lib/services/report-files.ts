@@ -3,11 +3,16 @@ import type { ReportFileKind } from "@prisma/client";
 import { withScope } from "@/lib/scope";
 import { DomainError } from "@/lib/errors";
 import { writeAudit } from "@/lib/audit";
-import { assertUpload, getObject, putObject, signFileLink, signReportLink } from "@/lib/adapters/storage";
+import { assertUpload, getObject, openObjectStream, putObject, putObjectFromFile, signFileLink, signReportLink } from "@/lib/adapters/storage";
+import { inspectDicomUpload } from "@/lib/dicom";
 import { sha256 } from "@/lib/crypto";
 import { getReport, readReportPdf } from "@/lib/services/lab";
 import type { Actor } from "@/domain/actor";
 import { hasPermission } from "@/domain/actor";
+
+function isNamedReferralDoctor(actor: Actor, booking: { tenantId: string; referralUserId?: string | null }) {
+  return booking.referralUserId === actor.userId && hasPermission(actor, "referrals.read", booking.tenantId);
+}
 
 /** Largest report file a center can upload. Scans and multi-page PDFs are bigger than prescriptions. */
 export const REPORT_FILE_MAX_MB = 20;
@@ -54,6 +59,39 @@ export async function uploadReportFile(
       data: { id, tenantId: report.tenantId, reportId: report.id, bookingItemId: itemId, kind: input.kind, fileName, contentType, sizeBytes: input.bytes.length, storageKey, checksum: sha256(input.bytes.toString("base64")), uploadedById: actor.userId },
     });
     await writeAudit(tx, { tenantId: report.tenantId, actorId: actor.userId, action: "UPLOAD", entityType: "ReportFile", entityId: id, metadata: { reportId: report.id, kind: input.kind, sizeBytes: input.bytes.length, contentType } });
+    return row;
+  });
+}
+
+/** Access check before a large upload is received, so a refused user never streams hundreds of MB. */
+export async function assertCanUploadReportFile(actor: Actor, reportId: string) {
+  const report = await getReport(actor, reportId);
+  assertCanManage(actor, report);
+  return report;
+}
+
+/**
+ * Stores a DICOM file or a zipped DICOM study that has already been streamed to a temp file.
+ * The file is checked (DICM magic or a zip holding DICOM images) and basic study facts are saved with it.
+ */
+export async function uploadDicomStudy(
+  actor: Actor,
+  input: { reportId: string; bookingItemId?: string | null; fileName: string; filePath: string; size: number; checksum: string },
+) {
+  const report = await assertCanUploadReportFile(actor, input.reportId);
+  if (!report.imagingOrder) throw new DomainError("UPLOAD", "DICOM studies can be added only to imaging reports.", 400);
+  const fileName = input.fileName.replace(/[\\/\r\n"]/g, "_").slice(0, 120) || "study.dcm";
+  const { contentType, extension, meta } = await inspectDicomUpload(input.filePath, input.size, fileName);
+  const itemId = input.bookingItemId || null;
+  if (itemId && !report.booking.items.some((item) => item.id === itemId)) throw new DomainError("UPLOAD", "That scan is not part of this booking", 400);
+  const id = randomUUID();
+  const storageKey = `tenants/${report.tenantId}/reports/${report.id}/files/${id}.${extension}`;
+  await putObjectFromFile(storageKey, input.filePath, contentType, input.size);
+  return withScope({ tenantId: report.tenantId, userId: actor.userId }, async (tx) => {
+    const row = await tx.reportFile.create({
+      data: { id, tenantId: report.tenantId, reportId: report.id, bookingItemId: itemId, kind: "SCAN_IMAGE", fileName, contentType, sizeBytes: input.size, storageKey, checksum: input.checksum, dicomMeta: meta, uploadedById: actor.userId },
+    });
+    await writeAudit(tx, { tenantId: report.tenantId, actorId: actor.userId, action: "UPLOAD", entityType: "ReportFile", entityId: id, metadata: { reportId: report.id, kind: "SCAN_IMAGE", sizeBytes: input.size, contentType, images: meta.imageCount } });
     return row;
   });
 }
@@ -105,6 +143,19 @@ export async function readReportFile(actor: Actor, fileId: string) {
   return { bytes, fileName: file.fileName, contentType: file.contentType };
 }
 
+/** Same checks as readReportFile, but streams the stored file (DICOM studies can be hundreds of MB). */
+export async function openReportFile(actor: Actor, fileId: string) {
+  const file = await findFile(actor, fileId);
+  const report = await getReport(actor, file.reportId);
+  const staff = ["samples.read", "reports.verify", "reports.approve", "imaging.report", "imaging.perform"].some((permission) => hasPermission(actor, permission, report.tenantId));
+  if (!staff && !RELEASED.has(report.status)) throw new DomainError("NOT_FOUND", "File not found", 404);
+  const { stream, size } = await openObjectStream(file.storageKey);
+  await withScope({ tenantId: report.tenantId, userId: actor.userId, patientId: actor.patientId }, (tx) =>
+    writeAudit(tx, { tenantId: report.tenantId, actorId: actor.userId, action: "VIEW", entityType: "ReportFile", entityId: file.id, metadata: { reportId: report.id } }),
+  );
+  return { stream, size, fileName: file.fileName, contentType: file.contentType };
+}
+
 /** Five-minute link for an uploaded file, issued only after the access check passes. */
 export async function signedReportFileLink(actor: Actor, fileId: string) {
   const file = await findFile(actor, fileId);
@@ -120,8 +171,8 @@ export async function signedReportPdfPath(actor: Actor, reportId: string) {
   return `/api/v1/files/signed?token=${encodeURIComponent(signReportLink(reportId, version, 300))}`;
 }
 
-/** Reports on one booking. Patients get only released reports (with files); staff of the center get all. */
-export async function listBookingReports(actor: Actor, booking: { id: string; tenantId: string; patientId: string }) {
+/** Reports on one booking. Patients and named referral doctors get only released reports; clinical staff of the center get all. */
+export async function listBookingReports(actor: Actor, booking: { id: string; tenantId: string; patientId: string; referralUserId?: string | null }) {
   const staff = actor.activeTenantId === booking.tenantId && ["samples.read", "reports.verify", "reports.approve", "imaging.report", "imaging.perform"].some((permission) => hasPermission(actor, permission, booking.tenantId));
   const include = {
     versions: { select: { version: true }, orderBy: { version: "desc" as const }, take: 1 },
@@ -129,6 +180,11 @@ export async function listBookingReports(actor: Actor, booking: { id: string; te
   };
   if (staff) {
     return withScope({ tenantId: booking.tenantId, userId: actor.userId }, (tx) => tx.medicalReport.findMany({ where: { bookingId: booking.id, tenantId: booking.tenantId }, include, orderBy: { createdAt: "asc" } }));
+  }
+  if (isNamedReferralDoctor(actor, booking)) {
+    return withScope({ tenantId: booking.tenantId, userId: actor.userId }, (tx) =>
+      tx.medicalReport.findMany({ where: { bookingId: booking.id, tenantId: booking.tenantId, status: { in: ["RELEASED", "AMENDED"] } }, include, orderBy: { createdAt: "asc" } }),
+    );
   }
   if (actor.patientId !== booking.patientId) return [];
   return withScope({ userId: actor.userId, patientId: actor.patientId }, (tx) =>

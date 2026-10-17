@@ -1,7 +1,7 @@
 import { requireSession } from "@/server/session";
 import { listAudit } from "@/lib/services/admin";
 import { deny } from "@/components/guard";
-import { PageHeader } from "@/components/widgets";
+import { PageHeader, Panel } from "@/components/widgets";
 import { AuditTable } from "@/components/record-tables";
 import { formatWhen } from "@/lib/format";
 
@@ -15,13 +15,15 @@ export default async function AuditPage() {
   return (
     <>
       <PageHeader eyebrow="Audit" title="Audit log" description="Who viewed, changed, approved, downloaded or released a record, and when." />
-      <AuditTable rows={rows.map((row) => ({
-        when: formatWhen(row.createdAt),
-        actor: row.actor?.name ?? "System",
-        action: row.action,
-        entity: `${row.entityType}${row.entityId ? ` ${row.entityId.slice(0, 8)}` : ""}`,
-        tenant: row.tenant?.name ?? "Platform",
-      }))} />
+      <Panel title="Recent events" description={`Latest ${rows.length} entries, newest first. Entries cannot be edited or deleted.`}>
+        <AuditTable rows={rows.map((row) => ({
+          when: formatWhen(row.createdAt),
+          actor: row.actor?.name ?? "System",
+          action: row.action,
+          entity: `${row.entityType}${row.entityId ? ` ${row.entityId.slice(0, 8)}` : ""}`,
+          tenant: row.tenant?.name ?? "Platform",
+        }))} />
+      </Panel>
     </>
   );
 }

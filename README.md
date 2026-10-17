@@ -78,6 +78,8 @@ Public pages search tests, packages, imaging, and home collection, then check ou
 
 Center staff manage branches, catalog, discounts, packages, invitations, slots, walk-ins, collections, samples, results, report release, imaging rooms, and refunds. A booking moves only through the allowed states. A report PDF is created on release. Unreleased results are not downloadable by the patient.
 
+X-ray, CT, MRI and ultrasound are booked against slots of a machine of that type. Staff set up machines, radiographer shifts, maintenance blocks and slots at `/console/imaging/rooms`. Radiology uploads PDFs, images and DICOM studies (`.dcm` or a zipped study, up to 500 MB, streamed) per booking item. The app shows only modality, study date and series and image counts, and the patient downloads the original file after release. See `docs/api.md` for the API and CSRF rules.
+
 Platform admins see live counts, approve centers, edit plan prices and limits, suspend users, read the audit log, and run the notification worker.
 
 ## Remaining provider setup
@@ -92,7 +94,7 @@ Copy `.env.example`. Mock mode needs no third-party accounts.
 
 Details, backups, and the first real super admin are in [docs/deploy.md](docs/deploy.md). The API is in [docs/api.md](docs/api.md), the model in [docs/er-diagram.md](docs/er-diagram.md), and the control list in [docs/security-checklist.md](docs/security-checklist.md). A Postman collection is at [postman/mediscan.postman_collection.json](postman/mediscan.postman_collection.json).
 
-Indian DPDP, ABDM, and clinical establishment rules need a legal review. This project does not claim those certifications. Imaging orders record a modality and an accession. They do not connect to a PACS.
+Indian DPDP, ABDM, and clinical establishment rules need a legal review. This project does not claim those certifications. Imaging orders record a modality and an accession. They do not connect to a PACS, and there is no DICOM viewer.
 
 ## Troubleshooting
 

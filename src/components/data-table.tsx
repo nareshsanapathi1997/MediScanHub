@@ -62,7 +62,28 @@ export function DataTable<T extends Record<string, unknown>>({
           </select>
         ) : null}
       </div>
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      {/* Phones get one card per row: the first column is the title, the rest are label and value pairs. */}
+      <ul className="grid gap-2 md:hidden" aria-label="Results">
+        {table.getRowModel().rows.length === 0 ? (
+          <li className="rounded-xl border border-dashed bg-card px-4 py-8 text-center text-sm text-muted-foreground">{empty}</li>
+        ) : table.getRowModel().rows.map((row) => {
+          const [first, ...rest] = row.getVisibleCells();
+          return (
+            <li key={row.id} className="grid gap-2 rounded-xl border bg-card p-4 text-sm">
+              {first ? <div className="font-medium">{flexRender(first.column.columnDef.cell, first.getContext())}</div> : null}
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+                {rest.map((cell) => (
+                  <div key={cell.id} className="contents">
+                    <dt className="text-xs text-muted-foreground">{typeof cell.column.columnDef.header === "string" ? cell.column.columnDef.header : cell.column.id}</dt>
+                    <dd className="min-w-0 text-right break-words">{flexRender(cell.column.columnDef.cell, cell.getContext())}</dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="hidden overflow-x-auto rounded-xl border bg-card md:block">
         <Table>
           <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((group) => (

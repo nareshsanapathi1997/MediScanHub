@@ -2,7 +2,10 @@ import { requireSession } from "@/server/session";
 import { notificationHealth } from "@/lib/services/admin";
 import { pumpNotificationsAction } from "@/server/actions";
 import { deny } from "@/components/guard";
-import { PageHeader, StatusPill } from "@/components/widgets";
+import { Item, ItemList, PageHeader, Panel, StatusPill } from "@/components/widgets";
+import { buttonVariants } from "@/components/ui/button";
+import { CheckCircle2, Send, TriangleAlert } from "lucide-react";
+import { sentenceCase } from "@/lib/format";
 import { formatWhen } from "@/lib/format";
 import { ActionForm } from "@/components/action-form";
 
@@ -13,21 +16,37 @@ export default async function NotificationsPage() {
   const blocked = deny(actor, "platform.read");
   if (blocked) return blocked;
   const health = await notificationHealth(actor);
+  const channels = [...new Set(health.grouped.map((row) => row.channel))];
   return (
     <>
-      <PageHeader eyebrow="Delivery" title="Notification health" description="The worker sends queued email, WhatsApp, and SMS through the configured provider. Local mode records them without calling Meta or an SMTP server. Reminders for the next 24 hours are queued when you run the worker." />
-      <ActionForm action={pumpNotificationsAction}>
-        <button className="h-10 rounded-lg bg-primary px-4 text-sm text-primary-foreground" type="submit">Run delivery worker</button>
-      </ActionForm>
-      <div className="flex flex-wrap gap-2">
-        {health.grouped.map((row) => <StatusPill key={`${row.channel}-${row.status}`} value={`${row.channel} ${row.status} ${row._count}`} />)}
+      <PageHeader eyebrow="Delivery" title="Notification health" description="The worker sends queued email, WhatsApp and SMS through the configured provider. Local mode records them without calling Meta or an SMTP server. Running the worker also queues reminders for the next 24 hours." actions={
+        <ActionForm action={pumpNotificationsAction}>
+          <button className={buttonVariants()} type="submit"><Send className="size-4" aria-hidden />Run delivery worker</button>
+        </ActionForm>
+      } />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {channels.length === 0 ? <p className="text-sm text-muted-foreground">No messages yet.</p> : channels.map((channel) => {
+          const rows = health.grouped.filter((row) => row.channel === channel);
+          const total = rows.reduce((sum, row) => sum + row._count, 0);
+          return (
+            <section key={channel} className="surface grid gap-3 p-5">
+              <div className="flex items-baseline justify-between"><h2 className="font-medium">{sentenceCase(channel)}</h2><span className="font-display text-2xl tabular-nums">{total}</span></div>
+              <ul className="grid gap-1.5">
+                {rows.map((row) => <li key={row.status} className="flex items-center justify-between text-sm"><StatusPill value={row.status} /><span className="tabular-nums text-muted-foreground">{row._count}</span></li>)}
+              </ul>
+            </section>
+          );
+        })}
       </div>
-      <section className="grid gap-2">
-        <h2 className="font-display text-2xl">Failed</h2>
-        {health.failed.length === 0 ? <p className="text-sm text-muted-foreground">No failed messages in the latest sample.</p> : health.failed.map((notice) => (
-          <p key={notice.id} className="text-sm">{formatWhen(notice.updatedAt)} · {notice.channel} · {notice.templateKey} · {notice.toAddress}</p>
-        ))}
-      </section>
+      <Panel title="Failed messages" description="From the latest sample. Fix the address or provider, then run the worker again.">
+        {health.failed.length === 0 ? <p className="flex items-center gap-2 text-sm text-success"><CheckCircle2 className="size-4" aria-hidden />No failed messages.</p> : (
+          <ItemList>
+            {health.failed.map((notice) => (
+              <Item key={notice.id} icon={TriangleAlert} tone="danger" title={<span className="break-all">{notice.toAddress}</span>} meta={`${sentenceCase(notice.channel)} · ${notice.templateKey} · ${formatWhen(notice.updatedAt)}`} />
+            ))}
+          </ItemList>
+        )}
+      </Panel>
     </>
   );
 }

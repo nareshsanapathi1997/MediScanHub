@@ -11,9 +11,9 @@ export function PackagesSection({ center, state }: { center: CenterProfile; stat
   if (center.packages.length === 0) return null;
   const servicesById = new Map(center.services.map((service) => [service.id, service]));
   return (
-    <section id="packages" className="mx-auto grid w-full max-w-6xl scroll-mt-24 gap-6 px-4">
-      <SectionHeading eyebrow="Health packages" title="Health checkup packages" description="Several tests at one price. Packages you add appear in “Your booking” below." />
-      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <section id="packages" className="grid min-w-0 scroll-mt-24 gap-5">
+      <SectionHeading eyebrow="Health packages" title="Health checkup packages" description="Several tests together at one price." />
+      <ul className="grid gap-4 md:grid-cols-2">
         {center.packages.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} state={state} servicesById={servicesById} />)}
       </ul>
     </section>

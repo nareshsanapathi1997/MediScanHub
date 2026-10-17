@@ -2,7 +2,7 @@ import Link from "next/link";
 import { loginAction } from "@/server/actions";
 import { FormBox } from "@/components/form-box";
 import { StickyInput } from "@/components/sticky-field";
-import { PageHeader } from "@/components/widgets";
+import { AuthShell } from "@/components/auth-shell";
 
 export const metadata = { title: "Sign in" };
 
@@ -10,8 +10,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const query = await searchParams;
   const next = query.next?.startsWith("/") && !query.next.startsWith("//") ? query.next : "";
   return (
-    <main className="mx-auto grid max-w-md gap-6 px-4 py-10">
-      <PageHeader eyebrow="Sign in" title="Sign in" description="Patients and center staff sign in here. After 5 wrong passwords, the account is locked for 15 minutes." />
+    <AuthShell eyebrow="Welcome back" title="Sign in" description="Patients and center staff sign in here. After 5 wrong passwords, the account is locked for 15 minutes.">
       {query.reset ? <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm">Your password is changed. Please sign in with the new password.</p> : null}
       {query.invited ? <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm">Invitation accepted. Sign in to open your center.</p> : null}
       <FormBox action={loginAction} submit="Sign in">
@@ -24,6 +23,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         {" · "}
         <Link className="text-primary" href="/register">New patient? Create an account</Link>
       </p>
-    </main>
+    </AuthShell>
   );
 }

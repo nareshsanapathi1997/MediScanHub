@@ -4,13 +4,14 @@ import { useMemo } from "react";
 import type { LegacyColumnDef } from "@tanstack/react-table/legacy";
 import { DataTable } from "@/components/data-table";
 import { StatusPill } from "@/components/widgets";
+import { sentenceCase } from "@/lib/format";
 
 export function BookingTable({ rows }: { rows: Array<{ href: string; code: string; patient: string; status: string; when: string; total: string; visit: string }> }) {
   const columns = useMemo<LegacyColumnDef<(typeof rows)[number], unknown>[]>(() => [
     { accessorKey: "code", header: "Code", cell: ({ row }) => <a className="text-primary" href={row.original.href}>{row.original.code}</a> },
     { accessorKey: "patient", header: "Patient" },
     { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusPill value={row.original.status} /> },
-    { accessorKey: "visit", header: "Visit", cell: ({ row }) => row.original.visit.toLowerCase().replaceAll("_", " ") },
+    { accessorKey: "visit", header: "Visit", cell: ({ row }) => sentenceCase(row.original.visit) },
     { accessorKey: "when", header: "When" },
     { accessorKey: "total", header: "Total" },
   ], []);

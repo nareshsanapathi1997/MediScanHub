@@ -15,4 +15,5 @@ export function middleware(request: NextRequest) {
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+// Large uploads skip middleware: it would buffer (and cap) the request body. The API checks auth and CSRF itself.
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|api/v1/uploads/).*)"] };

@@ -1,0 +1,12 @@
+---
+description: Do not open or control the browser unless the user explicitly confirms
+alwaysApply: true
+---
+
+# Browser use needs confirmation
+
+- Do **not** open, navigate, lock, screenshot, or automate the browser (cursor-ide-browser / any browser MCP) unless the user clearly asks for it in the current turn.
+- Asking to "test", "verify", "check the UI", or "redesign" is **not** permission to open the browser.
+- Allowed without asking: terminal commands, builds, unit/e2e tests, lint, typecheck, reading code, and describing how to check the page manually.
+- If browser verification would help, ask first in one short question (e.g. "Want me to open the browser and check?") and wait for confirmation.
+- After confirmation, use the browser only for that request; do not keep browsing beyond what was approved.

@@ -84,8 +84,8 @@ async function capturePayment(providerOrderId: string, providerPaymentId: string
         name: item.name,
         pricePaise: item.pricePaise,
         expanded: item.service
-          ? [{ serviceId: item.service.id, kind: item.service.kind, name: item.service.name }]
-          : (item.package?.items.map((pkg) => ({ serviceId: pkg.serviceId, kind: pkg.service.kind as ServiceKind, name: pkg.service.name })) ?? []),
+          ? [{ serviceId: item.service.id, kind: item.service.kind, name: item.service.name, modality: item.service.modality, preparation: item.service.preparation }]
+          : (item.package?.items.map((pkg) => ({ serviceId: pkg.serviceId, kind: pkg.service.kind as ServiceKind, name: pkg.service.name, modality: pkg.service.modality, preparation: pkg.service.preparation })) ?? []),
       }));
       await openClinicalWork(tx, payment.tenantId, payment.invoice.booking.id, payment.invoice.booking.branchId, items, payment.invoice.booking.createdById);
       const confirmPayload = {
@@ -314,4 +314,33 @@ export async function listInvoices(actor: Actor) {
   return withScope({ tenantId, userId: actor.userId }, (tx) =>
     tx.invoice.findMany({ where: { tenantId }, include: { payments: { include: { refunds: true } }, booking: true, patient: { include: { user: { select: { id: true, name: true, email: true, phone: true, status: true } } } } }, orderBy: { issuedAt: "desc" }, take: 100 }),
   );
+}
+
+/** A patient's own bills, one page at a time. */
+export async function listPatientInvoicesPage(actor: Actor, paging: { skip: number; take: number }) {
+  if (!actor.patientId) throw new DomainError("PATIENT_REQUIRED", "Sign in as a patient", 403);
+  const where = { patientId: actor.patientId };
+  return withScope({ userId: actor.userId, patientId: actor.patientId }, async (tx) => {
+    const [items, total, open] = await Promise.all([
+      tx.invoice.findMany({ where, include: { payments: true, booking: true }, orderBy: [{ issuedAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+      tx.invoice.count({ where }),
+      tx.invoice.aggregate({ where: { ...where, status: { notIn: ["PAID", "VOID"] } }, _sum: { totalPaise: true } }),
+    ]);
+    return { items, total, due: open._sum.totalPaise ?? 0 };
+  });
+}
+
+/** Bills waiting for payment at the desk (issued, with a booking), one page at a time. */
+export async function listDueInvoicesPage(actor: Actor, paging: { skip: number; take: number }) {
+  const tenantId = actor.activeTenantId;
+  if (!tenantId) throw new DomainError("TENANT_REQUIRED", "Choose a center first", 400);
+  assertPermission(actor, "invoices.read", tenantId);
+  const where = { tenantId, status: "ISSUED" as const, bookingId: { not: null } };
+  return withScope({ tenantId, userId: actor.userId }, async (tx) => {
+    const [items, total] = await Promise.all([
+      tx.invoice.findMany({ where, include: { payments: true, booking: true, patient: { include: { user: { select: { id: true, name: true } } } } }, orderBy: [{ issuedAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+      tx.invoice.count({ where }),
+    ]);
+    return { items, total };
+  });
 }

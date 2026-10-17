@@ -157,6 +157,119 @@
   animation: rise 0.6s ease both;
 }
 
+/* —— Home marketing surface —— */
+.home-hero {
+  background: #0b3d3a;
+  min-height: 28rem;
+  height: min(72svh, 36rem);
+}
+
+.home-hero-visual {
+  animation: home-drift 22s ease-in-out infinite alternate;
+  transform-origin: 68% 42%;
+  will-change: transform;
+}
+
+.home-hero-veil,
+.page-hero-veil {
+  background:
+    linear-gradient(105deg, rgb(4 28 27 / 78%) 0%, rgb(4 28 27 / 52%) 38%, rgb(4 28 27 / 22%) 62%, transparent 82%),
+    linear-gradient(to top, rgb(4 28 27 / 62%) 0%, rgb(4 28 27 / 18%) 42%, transparent 58%);
+}
+
+.dark .home-hero-veil,
+.dark .page-hero-veil {
+  background:
+    linear-gradient(105deg, rgb(2 18 17 / 84%) 0%, rgb(2 18 17 / 58%) 40%, rgb(2 18 17 / 28%) 64%, transparent 84%),
+    linear-gradient(to top, rgb(2 18 17 / 70%) 0%, rgb(2 18 17 / 22%) 44%, transparent 60%);
+}
+
+/* Compact hero strip for directory / content marketing pages */
+.page-hero {
+  background: #0b3d3a;
+  min-height: 14.5rem;
+  height: min(38svh, 18.5rem);
+}
+
+/* Public center profile cover — taller than page-hero, still below home hero */
+.center-hero-cover {
+  min-height: 11.5rem;
+  height: min(36svh, 17.5rem);
+}
+
+@media (min-width: 640px) {
+  .center-hero-cover {
+    min-height: 14rem;
+    height: min(40svh, 20rem);
+  }
+}
+
+.home-search {
+  box-shadow: 0 18px 50px -28px rgb(0 0 0 / 55%);
+}
+
+.home-band {
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--primary) 8%, var(--background)), var(--background));
+}
+
+.home-canvas {
+  background:
+    radial-gradient(900px 420px at 8% 0%, color-mix(in oklch, var(--primary) 10%, transparent), transparent 70%),
+    radial-gradient(700px 380px at 92% 18%, color-mix(in oklch, var(--info) 8%, transparent), transparent 65%),
+    var(--background);
+}
+
+.home-cta {
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--primary) 14%, var(--card)), var(--card) 55%, color-mix(in oklch, var(--accent) 55%, var(--card)));
+}
+
+.home-cta-glow {
+  background:
+    radial-gradient(500px 220px at 85% 20%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 70%);
+}
+
+.home-feature {
+  background: color-mix(in oklch, var(--card) 92%, var(--primary));
+}
+
+@keyframes home-drift {
+  from { transform: scale(1.02) translate3d(0, 0, 0); }
+  to { transform: scale(1.06) translate3d(-1.2%, 1%, 0); }
+}
+
+@keyframes home-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+.home-rise {
+  animation: home-rise 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.home-rise-delay-1 { animation-delay: 90ms; }
+.home-rise-delay-2 { animation-delay: 170ms; }
+.home-rise-delay-3 { animation-delay: 260ms; }
+
+.home-reveal {
+  animation: home-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 40ms;
+}
+
+.home-reveal-delay { animation-delay: 140ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero-visual,
+  .page-hero-visual,
+  .center-hero-visual,
+  .home-rise,
+  .home-reveal,
+  .rise {
+    animation: none !important;
+  }
+}
+
 .field {
   display: grid;
   gap: 0.35rem;

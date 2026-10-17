@@ -33,9 +33,6 @@ export function ProfileToggleLink({
         toast.success(`Added to your booking`, { description: itemName });
         try {
           sessionStorage.setItem(PULSE_KEY, "1");
-          if (window.matchMedia("(max-width: 1023px)").matches) {
-            sessionStorage.setItem(SCROLL_KEY, "1");
-          }
         } catch {
           /* private mode */
         }

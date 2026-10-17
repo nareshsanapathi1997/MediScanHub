@@ -1,22 +1,35 @@
 import { ShieldCheck, FlaskConical, FileLock2, CalendarCheck2 } from "@/components/icons";
+import { authHeroImage } from "@/lib/center-marketing";
+import { cn } from "cn";
 
 const points = [
-  { icon: CalendarCheck2, title: "Real slots, server-checked", body: "Capacity is held on the server, so two people never get the same 8:00 slot." },
-  { icon: FlaskConical, title: "Barcode-tracked samples", body: "Every tube is followed from collection to result with an audit trail." },
-  { icon: FileLock2, title: "Reports after sign-off", body: "Results reach patients only after a second reviewer approves them." },
-  { icon: ShieldCheck, title: "Strict tenant isolation", body: "Each center's data is fenced by row-level security in PostgreSQL." },
+  { icon: CalendarCheck2, title: "Book a real time slot", body: "See open times at the center or at home, and keep your place once you book." },
+  { icon: FlaskConical, title: "Samples tracked by barcode", body: "Every tube is followed from collection to result." },
+  { icon: FileLock2, title: "Reports checked by a doctor", body: "You see results only after a pathologist or radiologist signs them." },
+  { icon: ShieldCheck, title: "Your data stays private", body: "Each center sees only its own patients. Reports are never sent in a message." },
 ];
 
 /** Two-column frame for sign-in, registration, and recovery pages. */
 export function AuthShell({ eyebrow, title, description, children, footer, wide = false }: { eyebrow: string; title: string; description?: string; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean }) {
+  const hero = authHeroImage();
   return (
-    <main className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 lg:grid-cols-[1fr_minmax(0,1.05fr)] lg:py-16">
-      <aside className="relative hidden overflow-hidden rounded-3xl bg-gradient-to-br from-[oklch(0.32_0.07_200)] via-[oklch(0.38_0.08_190)] to-[oklch(0.45_0.09_175)] p-10 text-white shadow-xl lg:flex lg:flex-col lg:justify-between">
+    <main className="home-canvas mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 lg:grid-cols-[1fr_minmax(0,1.05fr)] lg:py-16">
+      <aside className="relative hidden overflow-hidden rounded-3xl bg-[oklch(0.32_0.07_200)] p-10 text-white shadow-xl lg:flex lg:flex-col lg:justify-between">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={hero.url}
+          alt=""
+          width={800}
+          height={1200}
+          className={cn("absolute inset-0 size-full object-cover opacity-45", hero.position)}
+          decoding="async"
+        />
+        <div aria-hidden className="absolute inset-0 bg-gradient-to-br from-[oklch(0.28_0.06_200_/_0.92)] via-[oklch(0.34_0.07_190_/_0.88)] to-[oklch(0.42_0.08_175_/_0.82)]" />
         <div aria-hidden className="pointer-events-none absolute -top-24 -right-24 size-72 rounded-full bg-white/10 blur-2xl" />
         <div aria-hidden className="pointer-events-none absolute -bottom-32 -left-16 size-80 rounded-full bg-teal-300/20 blur-3xl" />
         <div className="relative">
           <p className="text-xs font-semibold tracking-[0.18em] text-teal-100 uppercase">MediScan Hub</p>
-          <p className="mt-4 font-display text-3xl leading-tight">One platform for every diagnostic desk.</p>
+          <p className="mt-4 font-display text-3xl leading-tight">Tests, scans and reports in one place.</p>
         </div>
         <ul className="relative mt-10 grid gap-5">
           {points.map(({ icon: Icon, title: heading, body }) => (

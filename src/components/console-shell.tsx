@@ -26,6 +26,7 @@ const items: Item[] = [
   { href: "/console/org/collections", label: "Home collection", permission: "bookings.manage", icon: "truck", group: "Operations" },
   { href: "/console/lab", label: "Laboratory", permission: "samples.read", icon: "flask", group: "Clinical" },
   { href: "/console/imaging", label: "Imaging", permission: "imaging.read", icon: "scan", group: "Clinical" },
+  { href: "/console/imaging/rooms", label: "Scan rooms", permission: "imaging.read", icon: "clock", group: "Clinical" },
   { href: "/console/finance", label: "Finance", permission: "invoices.read", icon: "receipt", group: "Finance" },
   { href: "/console/org/analytics", label: "Analytics", permission: "analytics.read", icon: "chart", group: "Finance" },
   { href: "/console/org/branches", label: "Branches", permission: "branches.manage", icon: "building", group: "Setup" },
@@ -45,12 +46,15 @@ const items: Item[] = [
   { href: "/console/patient/insurance", label: "Insurance", permission: "patient.portal", icon: "shield", group: "Personal", global: true },
   { href: "/console/patient/chronic", label: "Chronic care", permission: "patient.portal", icon: "activity", group: "Personal", global: true },
   { href: "/console/doctor", label: "Referrals", permission: "referrals.read", icon: "doctor", group: "Personal" },
+  { href: "/console/account/support", label: "Support", permission: "tickets.create", icon: "help", group: "Personal", global: true },
 ];
 
 function navFor(actor: Actor): NavGroup[] {
   const perms = permissionSet(actor, actor.activeTenantId);
   const visible = items.filter((item) => {
     if (item.permission === "patient.portal") return Boolean(actor.patientId) && (perms.has(item.permission) || actor.isSuperAdmin);
+    // Patients use /console/patient/support; staff/doctors with tickets.create use the account desk.
+    if (item.href === "/console/account/support") return perms.has("tickets.create") && !(Boolean(actor.patientId) && perms.has("patient.portal"));
     if (!item.global && !actor.activeTenantId) return false;
     return perms.has(item.permission);
   });
@@ -101,6 +105,7 @@ export function ConsoleShell({ actor, tenants, children }: { actor: Actor; tenan
                   </div>
                 </SheetContent>
               </Sheet>
+              <Link href={homeFor(actor)} className="sm:hidden" aria-label="Home"><Logo /></Link>
               <div className="hidden min-w-0 items-center gap-2 sm:flex">
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-primary" aria-hidden>{initials(actor.name)}</span>
                 <div className="min-w-0 leading-tight">

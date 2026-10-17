@@ -1,24 +1,29 @@
+import { Pagination } from "@/components/pagination";
+import { fetchPage, parsePage } from "@/lib/pagination";
 import { requireSession } from "@/server/session";
-import { listInAppNotifications, notificationPreview } from "@/lib/services/patient-extras";
+import { listInAppNotificationsPage, notificationPreview } from "@/lib/services/patient-extras";
 import { formatWhen } from "@/lib/format";
 import { Gate } from "@/components/guard";
-import { PageHeader, EmptyState } from "@/components/widgets";
+import { EmptyState, Item, ItemList, PageHeader, Panel } from "@/components/widgets";
+import { Bell, CheckCheck, Mail, MailOpen } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { notificationReadAction } from "@/server/actions";
 
 export const metadata = { title: "Notifications" };
 
-export default async function PatientNotificationsPage() {
+export default async function PatientNotificationsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const { actor } = await requireSession();
+  const params = await searchParams;
   return (
     <Gate actor={actor} permission="patient.portal">
-      <NotificationsBody />
+      <NotificationsBody params={params} />
     </Gate>
   );
 }
 
-async function NotificationsBody() {
+async function NotificationsBody({ params }: { params: { page?: string } }) {
   const { actor } = await requireSession();
-  const rows = await listInAppNotifications(actor);
+  const { items: rows, total, unread, args: paging } = await fetchPage(parsePage(params, 15), (args) => listInAppNotificationsPage(actor, args));
   return (
     <>
       <PageHeader
@@ -26,38 +31,43 @@ async function NotificationsBody() {
         title="Notifications"
         description="Updates about your bookings and reports. For your privacy, test results are never shown here."
         actions={
-          rows.some((row) => !row.readAt) ? (
+          unread > 0 ? (
             <form action={notificationReadAction}>
               <input type="hidden" name="id" value="all" />
-              <button type="submit" className="text-sm text-primary">Mark all read</button>
+              <button type="submit" className={buttonVariants({ variant: "outline" })}><CheckCheck className="size-4" aria-hidden />Mark all read</button>
             </form>
           ) : null
         }
       />
       {rows.length === 0 ? (
-        <EmptyState title="No messages yet" body="When a booking is confirmed or a report is released, a message appears here." />
+        <EmptyState title="No messages yet" body="When a booking is confirmed or a report is released, a message appears here." icon={Bell} />
       ) : (
-        rows.map((row) => {
-          const payload = (row.payload ?? {}) as Record<string, string>;
-          const preview = notificationPreview(row.templateKey, payload);
-          return (
-            <article key={row.id} className={`rounded-2xl border bg-card p-4 ${row.readAt ? "opacity-80" : ""}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-medium">{preview.subject}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{preview.text}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">{formatWhen(row.createdAt)}</p>
-                </div>
-                {!row.readAt ? (
-                  <form action={notificationReadAction}>
-                    <input type="hidden" name="id" value={row.id} />
-                    <button type="submit" className="text-xs text-primary">Mark read</button>
-                  </form>
-                ) : null}
-              </div>
-            </article>
-          );
-        })
+        <Panel title={unread > 0 ? `${unread} unread` : "All caught up"} description={`${total} ${total === 1 ? "message" : "messages"}`}>
+          <ItemList>
+            {rows.map((row) => {
+              const payload = (row.payload ?? {}) as Record<string, string>;
+              const preview = notificationPreview(row.templateKey, payload);
+              return (
+                <Item
+                  key={row.id}
+                  icon={row.readAt ? MailOpen : Mail}
+                  tone={row.readAt ? "muted" : "primary"}
+                  title={<span className="flex items-center gap-2">{!row.readAt ? <span className="size-2 rounded-full bg-primary" aria-label="Unread" /> : null}{preview.subject}</span>}
+                  meta={formatWhen(row.createdAt)}
+                  trailing={!row.readAt ? (
+                    <form action={notificationReadAction}>
+                      <input type="hidden" name="id" value={row.id} />
+                      <button type="submit" className="rounded-lg px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10">Mark read</button>
+                    </form>
+                  ) : null}
+                >
+                  <p className={row.readAt ? "text-sm text-muted-foreground" : "text-sm"}>{preview.text}</p>
+                </Item>
+              );
+            })}
+          </ItemList>
+          <Pagination className="mt-9" pathname="/console/patient/notifications" params={params} page={paging.page} pageSize={paging.pageSize} total={total} noun={total === 1 ? "message" : "messages"} label="Message pages" />
+        </Panel>
       )}
     </>
   );

@@ -6,7 +6,7 @@ import { registerAction } from "@/server/actions";
 import { FieldError, FormBox, useFormBoxState } from "@/components/form-box";
 import { StickyInput, StickySelect } from "@/components/sticky-field";
 import { LocationPicker } from "@/components/location-picker";
-import { PageHeader } from "@/components/widgets";
+import { AuthShell } from "@/components/auth-shell";
 import { PASSWORD_POLICY_MESSAGE, passwordMeetsPolicy } from "@/lib/password-policy";
 
 function RegisterFields() {
@@ -67,12 +67,11 @@ function RegisterFields() {
 
 export default function RegisterPage() {
   return (
-    <main className="mx-auto grid max-w-md gap-6 px-4 py-10">
-      <PageHeader eyebrow="Patients" title="Create an account" description="Create a free account to book tests and download your reports. Diagnostic centers use a separate form." />
+    <AuthShell eyebrow="Patients" title="Create an account" description="Create a free account to book tests and download your reports. Diagnostic centers use a separate form.">
       <FormBox action={registerAction} submit="Create account">
         <RegisterFields />
       </FormBox>
       <p className="text-sm"><Link className="text-primary" href="/onboarding">Own a diagnostic center? Register it here</Link></p>
-    </main>
+    </AuthShell>
   );
 }

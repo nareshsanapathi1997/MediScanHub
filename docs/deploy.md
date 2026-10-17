@@ -24,6 +24,8 @@ There is no public signup for platform admins. After migrate, insert one user wi
 
 The app is a Next.js server. `npm run build` then `npm run start` listens on port 43123. Set `APP_URL` to the public https origin. Terminate TLS at the platform or a proxy. Custom center domains must reach the same app so the host header can brand the public site.
 
+DICOM uploads (`PUT /api/v1/uploads/dicom`) can be up to 500 MB. Allow that body size and a long timeout on the proxy (for nginx: `client_max_body_size 510m; proxy_request_buffering off; proxy_read_timeout 600s;`). The app streams the body to `os.tmpdir()/mediscan-uploads`, so the temp disk needs room for the largest upload in flight. Other uploads are capped at 20 MB.
+
 Schedule `POST /api/v1/notifications/process` with header `x-cron-secret` every few minutes. That call sends the queue, queues booking reminders, and refreshes subscription states.
 
 ## Backups and rollback

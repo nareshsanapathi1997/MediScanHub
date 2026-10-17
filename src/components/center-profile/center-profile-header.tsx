@@ -16,7 +16,7 @@ export async function CenterProfileHeader({
 }) {
   const session = await currentSession();
   const brand = safeColor(center.brandColor, "#0F766E");
-  const links = centerSectionLinks(center.packages.length > 0, center.galleryUrls.length > 0);
+  const links = centerSectionLinks(center.packages.length > 0);
   const deskHref = session ? homeFor(session.actor) : null;
 
   return (

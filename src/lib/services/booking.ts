@@ -1,4 +1,4 @@
-import { Prisma, type BookingStatus, type ServiceKind, type SlotKind, type VisitType } from "@prisma/client";
+import { Prisma, type BookingStatus, type CollectionStatus, type ServiceKind, type SlotKind, type VisitType } from "@prisma/client";
 import { prisma, prismaPrivileged } from "@/lib/db";
 import { withScope, type Tx } from "@/lib/scope";
 import { DomainError } from "@/lib/errors";
@@ -13,6 +13,7 @@ import { getObject } from "@/lib/adapters/storage";
 import { assertCapacity } from "@/lib/services/subscription";
 import type { Actor } from "@/domain/actor";
 import { assertBranchAccess, assertPermission, hasPermission } from "@/domain/actor";
+import { isScanModality, modalityLabel, scanModalityFor, type ScanModality } from "@/domain/scan-scheduling";
 import { BOOKING_TRANSITIONS, COLLECTION_TRANSITIONS, assertTransition, permissionForBookingTransition } from "@/domain/state";
 
 const CONSENT_VERSION = "2026-10-01";
@@ -36,7 +37,7 @@ export type BookingDraft = {
   tpaReference?: string;
 };
 
-type Expanded = { serviceId: string; kind: ServiceKind; name: string };
+type Expanded = { serviceId: string; kind: ServiceKind; name: string; modality: string | null; preparation: string | null };
 type PricedItem = { serviceId?: string; packageId?: string; name: string; pricePaise: number; expanded: Expanded[] };
 
 function isUnique(error: unknown) {
@@ -60,7 +61,7 @@ async function priceQuote(tx: Tx, tenantId: string, branchId: string, serviceIds
     if (!price) throw new DomainError("PRICE", `${service.name} has no active price at this branch`, 400);
     const net = price.pricePaise - price.discountPaise;
     total += net;
-    items.push({ serviceId, name: service.name, pricePaise: net, expanded: [{ serviceId, kind: service.kind, name: service.name }] });
+    items.push({ serviceId, name: service.name, pricePaise: net, expanded: [{ serviceId, kind: service.kind, name: service.name, modality: service.modality, preparation: service.preparation }] });
   }
   for (const packageId of packageIds) {
     const pkg = await tx.testPackage.findFirst({
@@ -73,7 +74,7 @@ async function priceQuote(tx: Tx, tenantId: string, branchId: string, serviceIds
       packageId,
       name: pkg.name,
       pricePaise: pkg.pricePaise,
-      expanded: pkg.items.map((item) => ({ serviceId: item.serviceId, kind: item.service.kind, name: item.service.name })),
+      expanded: pkg.items.map((item) => ({ serviceId: item.serviceId, kind: item.service.kind, name: item.service.name, modality: item.service.modality, preparation: item.service.preparation })),
     });
   }
   return { total, items };
@@ -86,21 +87,43 @@ export async function quoteBooking(input: { branchId: string; serviceIds: string
   });
   if (!branch) throw new DomainError("NOT_FOUND", "That branch is not open for booking", 404);
   const priced = await withScope({ tenantId: branch.tenantId }, (tx) => priceQuote(tx, branch.tenantId, branch.id, input.serviceIds, input.packageIds));
-  return { branch, tenant: branch.tenant, ...priced };
+  const expanded = priced.items.flatMap((item) => item.expanded);
+  const scanModality = scanModalityFor(expanded);
+  const preparation = [...new Map(expanded.filter((service) => service.preparation).map((service) => [service.serviceId, { name: service.name, text: service.preparation! }])).values()];
+  return { branch, tenant: branch.tenant, ...priced, scanModality, preparation };
 }
 
-async function acquireSlot(tx: Tx, tenantId: string, branchId: string, slotId: string, kind: SlotKind) {
+/**
+ * Takes one place in a slot. The conditional UPDATE is the capacity check, so two patients racing for the last
+ * place cannot both win. Scan slots must belong to an active machine of the right type with no maintenance block.
+ */
+async function acquireSlot(tx: Tx, tenantId: string, branchId: string, slotId: string, kind: SlotKind, modality: ScanModality | null = null) {
   const updated = await tx.$executeRaw`
-    UPDATE "AvailabilitySlot"
-    SET "bookedCount" = "bookedCount" + 1, "updatedAt" = NOW()
-    WHERE id = ${slotId}::uuid
-      AND "tenantId" = ${tenantId}::uuid
-      AND "branchId" = ${branchId}::uuid
-      AND kind = ${kind}::"SlotKind"
-      AND "bookedCount" < capacity
-      AND "startsAt" > NOW()
+    UPDATE "AvailabilitySlot" s
+    SET "bookedCount" = s."bookedCount" + 1, "updatedAt" = NOW()
+    WHERE s.id = ${slotId}::uuid
+      AND s."tenantId" = ${tenantId}::uuid
+      AND s."branchId" = ${branchId}::uuid
+      AND s.kind = ${kind}::"SlotKind"
+      AND s."bookedCount" < s.capacity
+      AND s."startsAt" > NOW()
+      AND (${modality}::text IS NULL OR EXISTS (
+        SELECT 1 FROM "Equipment" e WHERE e.id = s."equipmentId" AND e.active AND e.modality = ${modality}::text
+      ))
+      AND NOT EXISTS (
+        SELECT 1 FROM "EquipmentBlock" b
+        WHERE b."equipmentId" = s."equipmentId" AND b."startsAt" < s."endsAt" AND b."endsAt" > s."startsAt"
+      )
   `;
-  if (Number(updated) !== 1) throw new DomainError("SLOT_FULL", "That slot was just taken. Choose another time.", 409);
+  if (Number(updated) !== 1) {
+    const slot = await tx.availabilitySlot.findFirst({ where: { id: slotId, tenantId, branchId }, include: { equipment: true } });
+    if (slot && modality && (slot.kind !== "IMAGING" || slot.equipment?.modality !== modality)) {
+      throw new DomainError("SLOT_TYPE", `This time is not a ${modalityLabel(modality)} slot. Pick a time from the ${modalityLabel(modality)} list.`, 400);
+    }
+    if (slot && !modality && slot.kind !== kind) throw new DomainError("SLOT_TYPE", "That time slot is for a different kind of visit. Pick another time.", 400);
+    if (slot?.equipment && !slot.equipment.active) throw new DomainError("SLOT_FULL", "That machine is not in use right now. Choose another time.", 409);
+    throw new DomainError("SLOT_FULL", "That slot was just taken or the machine is under maintenance. Choose another time.", 409);
+  }
   return tx.availabilitySlot.findFirstOrThrow({ where: { id: slotId, tenantId } });
 }
 
@@ -138,8 +161,10 @@ export async function openClinicalWork(tx: Tx, tenantId: string, bookingId: stri
   }
   if (imaging.length) {
     const modality = imaging.map((service) => service.name).join(", ");
+    const prep = imaging.filter((service) => service.preparation).map((service) => `${service.name}: ${service.preparation}`);
+    const prepInstructions = [...prep, "Please come 15 minutes before your slot. Bring your prescription and any old scans."].join("\n");
     const order = await tx.imagingOrder.create({
-      data: { tenantId, bookingId, modality, status: "SCHEDULED", prepInstructions: "Follow the preparation shared by the center. Arrive 15 minutes early." },
+      data: { tenantId, bookingId, modality, status: "SCHEDULED", prepInstructions },
     });
     for (const service of imaging) {
       await tx.imagingStudy.create({
@@ -161,15 +186,18 @@ async function notifyBooking(tx: Tx, input: { tenantId: string; userId: string; 
 async function insertBooking(tx: Tx, actor: Actor, branch: { id: string; tenantId: string; code: string; name: string; tenant: { name: string } }, input: BookingDraft, status: BookingStatus, authorId = actor.userId) {
   await assertCapacity(tx, branch.tenantId, "booking");
   if (!actor.patientId) throw new DomainError("PATIENT", "A patient profile is required", 400);
-  const kind: SlotKind = input.visitType === "HOME_COLLECTION" ? "HOME" : input.visitType === "WALK_IN" ? "CENTER" : "CENTER";
   if (input.visitType === "HOME_COLLECTION" && !input.address?.trim()) throw new DomainError("ADDRESS", "Home collection needs a pickup address", 400);
+  const priced = await priceQuote(tx, branch.tenantId, branch.id, input.serviceIds, input.packageIds);
+  const scanModality = scanModalityFor(priced.items.flatMap((item) => item.expanded));
+  if (scanModality && input.visitType === "HOME_COLLECTION") {
+    throw new DomainError("VISIT", "Scans are done at the center. Choose a center visit for this booking.", 400);
+  }
+  const kind: SlotKind = scanModality ? "IMAGING" : input.visitType === "HOME_COLLECTION" ? "HOME" : "CENTER";
   let slot: { id: string; startsAt: Date } | null = null;
   if (input.visitType !== "WALK_IN") {
-    if (!input.slotId) throw new DomainError("SLOT", "Choose a time slot", 400);
-    const acquired = await acquireSlot(tx, branch.tenantId, branch.id, input.slotId, input.visitType === "HOME_COLLECTION" ? "HOME" : kind);
-    slot = acquired;
+    if (!input.slotId) throw new DomainError("SLOT", scanModality ? `Choose a ${modalityLabel(scanModality)} time slot` : "Choose a time slot", 400);
+    slot = await acquireSlot(tx, branch.tenantId, branch.id, input.slotId, kind, scanModality);
   }
-  const priced = await priceQuote(tx, branch.tenantId, branch.id, input.serviceIds, input.packageIds);
   const consent = await tx.patientConsent.create({
     data: {
       tenantId: branch.tenantId,
@@ -389,7 +417,8 @@ export async function createWalkIn(actor: Actor, input: BookingDraft & { patient
 }
 
 const bookingInclude = {
-  items: true,
+  items: { include: { service: { select: { kind: true, modality: true, preparation: true } } } },
+  slot: { select: { kind: true, startsAt: true, endsAt: true, equipment: { select: { name: true, room: true, modality: true } } } },
   branch: true,
   dependent: true,
   tenant: { select: { id: true, name: true, slug: true, brandColor: true, phone: true } },
@@ -419,7 +448,8 @@ export async function readBookingPrescription(actor: Actor, bookingId: string) {
   return { bytes, fileName: name, contentType };
 }
 
-function doctorRestricted(actor: Actor, tenantId: string) {
+/** True when the actor only has the referral-doctor desk at this center (not elevated staff). */
+export function doctorRestricted(actor: Actor, tenantId: string) {
   const memberships = actor.memberships.filter((membership) => membership.status === "ACTIVE" && membership.tenantId === tenantId);
   const elevated = memberships.some((membership) => membership.roleKey !== "DOCTOR" && membership.permissions.includes("bookings.read"));
   return !elevated && memberships.some((membership) => membership.roleKey === "DOCTOR");
@@ -446,11 +476,27 @@ export async function getBooking(actor: Actor, id: string) {
   return row;
 }
 
-export async function listBookings(actor: Actor, filters: { status?: BookingStatus; query?: string; from?: Date; to?: Date; page?: number; pageSize?: number }) {
+export async function listBookings(actor: Actor, filters: { status?: BookingStatus; query?: string; from?: Date; to?: Date; page?: number; pageSize?: number;
+  /** Only bookings with a home collection; narrow further by its status(es) or collector. */
+  homeCollection?: boolean;
+  collectionStatus?: CollectionStatus | CollectionStatus[];
+  collectionAssigneeId?: string;
+  /** Desk queue: visits in this window, or any visit still waiting (pending, confirmed, checked in). */
+  queue?: { from: Date; to: Date };
+}) {
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 20));
   const whereBase = {
     ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.collectionStatus || filters.collectionAssigneeId
+      ? { collection: { is: {
+          ...(filters.collectionStatus ? { status: Array.isArray(filters.collectionStatus) ? { in: filters.collectionStatus } : filters.collectionStatus } : {}),
+          ...(filters.collectionAssigneeId ? { assigneeId: filters.collectionAssigneeId } : {}),
+        } } }
+      : filters.homeCollection ? { collection: { isNot: null } } : {}),
+    ...(filters.queue
+      ? { AND: [{ OR: [{ scheduledAt: { gte: filters.queue.from, lte: filters.queue.to } }, { status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] as BookingStatus[] } }] }] }
+      : {}),
     ...(filters.from || filters.to ? { scheduledAt: { gte: filters.from, lte: filters.to } } : {}),
     ...(filters.query
       ? {
@@ -544,8 +590,8 @@ export async function transitionBooking(actor: Actor, bookingId: string, to: Boo
         name: item.name,
         pricePaise: item.pricePaise,
         expanded: item.service
-          ? [{ serviceId: item.service.id, kind: item.service.kind, name: item.service.name }]
-          : (item.package?.items.map((pkg) => ({ serviceId: pkg.serviceId, kind: pkg.service.kind, name: pkg.service.name })) ?? []),
+          ? [{ serviceId: item.service.id, kind: item.service.kind, name: item.service.name, modality: item.service.modality, preparation: item.service.preparation }]
+          : (item.package?.items.map((pkg) => ({ serviceId: pkg.serviceId, kind: pkg.service.kind, name: pkg.service.name, modality: pkg.service.modality, preparation: pkg.service.preparation })) ?? []),
       }));
       await openClinicalWork(tx, booking.tenantId, booking.id, booking.branchId, priced, actor.userId);
     }
@@ -574,10 +620,12 @@ export async function rescheduleBooking(actor: Actor, bookingId: string, slotId:
     assertBranchAccess(actor, booking.tenantId, booking.branchId);
   }
   if (!["PENDING", "CONFIRMED"].includes(booking.status)) throw new DomainError("INVALID_TRANSITION", "This visit can no longer be rescheduled", 409);
-  const kind: SlotKind = booking.visitType === "HOME_COLLECTION" ? "HOME" : "CENTER";
+  const currentSlot = booking.slotId ? await prismaPrivileged.availabilitySlot.findFirst({ where: { id: booking.slotId, tenantId: booking.tenantId }, include: { equipment: true } }) : null;
+  const scanModality = currentSlot?.kind === "IMAGING" && isScanModality(currentSlot.equipment?.modality) ? currentSlot.equipment!.modality as ScanModality : null;
+  const kind: SlotKind = scanModality ? "IMAGING" : booking.visitType === "HOME_COLLECTION" ? "HOME" : "CENTER";
   return withScope({ tenantId: booking.tenantId, userId: actor.userId, patientId: actor.patientId }, async (tx) => {
     if (booking.slotId === slotId) throw new DomainError("SLOT", "Choose a different time slot", 400);
-    const slot = await acquireSlot(tx, booking.tenantId, booking.branchId, slotId, kind);
+    const slot = await acquireSlot(tx, booking.tenantId, booking.branchId, slotId, kind, scanModality);
     // Compare-and-set on the old slot: a concurrent reschedule or cancel makes this fail and rolls back the new hold.
     const moved = await tx.booking.updateMany({
       where: { id: booking.id, tenantId: booking.tenantId, slotId: booking.slotId, status: { in: ["PENDING", "CONFIRMED"] } },

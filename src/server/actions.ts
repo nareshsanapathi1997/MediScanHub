@@ -1,5 +1,6 @@
 "use server";
 
+import { parseHolidays, parseWeekForm } from "@/lib/hours";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
@@ -13,7 +14,8 @@ import { submitTpaClaim, transitionTpaClaim } from "@/lib/services/tpa-claims";
 import { paymentProvider, mockCheckoutSignature } from "@/lib/adapters/payment";
 import { randomToken } from "@/lib/crypto";
 import { assignSampleTechnician, transitionSample, enterResults, transitionReport } from "@/lib/services/lab";
-import { checkInImaging, scheduleEquipment, transitionStudy, saveEquipment } from "@/lib/services/imaging";
+import { checkInImaging, transitionStudy } from "@/lib/services/imaging";
+import { addMaintenanceBlock, addTechnicianShift, createScanSlots, removeMaintenanceBlock, removeScanSlot, removeTechnicianShift, saveScanRoom, setScanRoomActive } from "@/lib/services/scan-rooms";
 import { createBranch, createSlots, savePackage, saveService, setServicePrice, updateBranch, updateTenantProfile } from "@/lib/services/catalog";
 import { cancelSubscription, changePlan, refreshSubscriptionStates, updatePlanPrice } from "@/lib/services/subscription";
 import { createPublicTicket, createTicket, decideTenant, requestDeletion, setUserStatus, updateOwnProfile, updateTicket, uploadVerification } from "@/lib/services/admin";
@@ -100,11 +102,11 @@ async function actorOrThrow() {
  * Run a plain form action and send the user back to the page they came from with a flash message,
  * so a domain error (missing reason, wrong state, permission) shows as a toast instead of the error page.
  */
-async function guarded(run: () => Promise<void>, success: string) {
+async function guarded(run: () => Promise<void>, success: string | (() => string)) {
   let flash: { kind: "error" | "ok"; message: string };
   try {
     await run();
-    flash = { kind: "ok", message: success };
+    flash = { kind: "ok", message: typeof success === "function" ? success() : success };
   } catch (error) {
     if (isRedirectError(error)) throw error;
     flash = { kind: "error", message: error instanceof DomainError ? error.message : errorMessage(error) };
@@ -457,7 +459,11 @@ export async function acceptInviteAction(_prev: ActionState, form: FormData): Pr
 export async function branchAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
     const session = await actorOrThrow();
+    const week = form.has("day-1-open") ? parseWeekForm((name) => { const value = form.get(name); return typeof value === "string" ? value : null; }) : null;
+    const firstOpen = week?.find((day) => day !== null);
     await createBranch(session.actor, {
+      ...(week ? { weeklyHours: week } : {}),
+      holidays: parseHolidays(text(form, "holidays")),
       name: text(form, "name"),
       code: text(form, "code"),
       address: text(form, "address"),
@@ -465,10 +471,10 @@ export async function branchAction(_prev: ActionState, form: FormData): Promise<
       state: text(form, "state"),
       phone: text(form, "phone"),
       homeCollection: form.get("homeCollection") === "on",
-      opensAt: text(form, "opensAt") || "07:00",
-      closesAt: text(form, "closesAt") || "20:00",
+      opensAt: firstOpen?.opensAt ?? (text(form, "opensAt") || "07:00"),
+      closesAt: firstOpen?.closesAt ?? (text(form, "closesAt") || "20:00"),
     });
-    revalidatePath("/console/org/branches");
+    // The form reloads the page itself (see FormBox reloadOnSuccess).
     return { error: "" };
   } catch (error) {
     return formError(error);
@@ -478,7 +484,15 @@ export async function branchAction(_prev: ActionState, form: FormData): Promise<
 export async function hoursAction(form: FormData) {
   await guarded(async () => {
     const session = await actorOrThrow();
-    await updateBranch(session.actor, text(form, "branchId"), { opensAt: text(form, "opensAt"), closesAt: text(form, "closesAt"), homeCollection: form.get("homeCollection") === "on" });
+    const week = parseWeekForm((name) => { const value = form.get(name); return typeof value === "string" ? value : null; });
+    const firstOpen = week.find((day) => day !== null);
+    await updateBranch(session.actor, text(form, "branchId"), {
+      weeklyHours: week,
+      opensAt: firstOpen?.opensAt ?? "07:00",
+      closesAt: firstOpen?.closesAt ?? "20:00",
+      holidays: parseHolidays(text(form, "holidays")),
+      homeCollection: form.get("homeCollection") === "on",
+    });
     revalidatePath("/console/org/branches");
   }, "Branch hours saved.");
 }
@@ -678,17 +692,6 @@ export async function imagingAction(form: FormData) {
   }, "Imaging updated.");
 }
 
-export async function equipmentAction(_prev: ActionState, form: FormData): Promise<ActionState> {
-  try {
-    const session = await actorOrThrow();
-    await saveEquipment(session.actor, { branchId: text(form, "branchId"), name: text(form, "name"), modality: text(form, "modality"), room: text(form, "room") });
-    revalidatePath("/console/imaging");
-    return { error: "" };
-  } catch (error) {
-    return formError(error);
-  }
-}
-
 export async function verificationAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
     const session = await actorOrThrow();
@@ -736,23 +739,6 @@ export async function pumpNotificationsAction() {
   await processNotificationQueue(50);
   await refreshSubscriptionStates();
   revalidatePath("/console/admin/notifications");
-}
-
-export async function scheduleEquipmentAction(_prev: ActionState, form: FormData): Promise<ActionState> {
-  try {
-    const session = await actorOrThrow();
-    const date = text(form, "date");
-    await scheduleEquipment(session.actor, {
-      equipmentId: text(form, "equipmentId"),
-      staffUserId: text(form, "staffUserId") || undefined,
-      startsAt: new Date(`${date}T${text(form, "start")}:00+05:30`),
-      endsAt: new Date(`${date}T${text(form, "end")}:00+05:30`),
-    });
-    revalidatePath("/console/imaging");
-    return { error: "" };
-  } catch (error) {
-    return formError(error);
-  }
 }
 
 export async function revokeListedSessionAction(form: FormData) {
@@ -805,6 +791,17 @@ export async function patientTicketAction(_prev: ActionState, form: FormData): P
     const session = await actorOrThrow();
     await createTicket(session.actor, { subject: text(form, "subject"), body: text(form, "body"), priority: (text(form, "priority") || "NORMAL") as "NORMAL" });
     revalidatePath("/console/patient/support");
+    return { error: "" };
+  } catch (error) {
+    return formError(error);
+  }
+}
+
+export async function staffTicketAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const session = await actorOrThrow();
+    await createTicket(session.actor, { subject: text(form, "subject"), body: text(form, "body"), priority: (text(form, "priority") || "NORMAL") as "NORMAL" });
+    revalidatePath("/console/account/support");
     return { error: "" };
   } catch (error) {
     return formError(error);
@@ -907,4 +904,58 @@ export async function integrationAction(form: FormData) {
   if (mode === "fhir") await sendFhirServiceRequest(session.actor, text(form, "bookingId"));
   if (mode === "abdm") await registerAbdmLink(session.actor, text(form, "patientId"));
   revalidatePath("/console/org/integrations");
+}
+
+const istTime = (day: string, time: string) => new Date(`${day}T${time}:00+05:30`);
+
+/** Scan rooms page: one action, the "op" field says what to do. Each result comes back as a flash message. */
+export async function scanRoomAction(form: FormData) {
+  const op = text(form, "op");
+  let message = "Saved.";
+  await guarded(async () => {
+    const { actor } = await actorOrThrow();
+    if (op === "room") {
+      await saveScanRoom(actor, { branchId: text(form, "branchId"), name: text(form, "name"), modality: text(form, "modality"), room: text(form, "room"), slotMinutes: Number(text(form, "slotMinutes") || "20") });
+      message = "Scan room added.";
+    } else if (op === "active") {
+      const active = text(form, "active") === "true";
+      await setScanRoomActive(actor, text(form, "equipmentId"), active);
+      message = active ? "Machine is back in use." : "Machine taken out of use. Patients cannot book it now.";
+    } else if (op === "shift") {
+      const day = text(form, "day");
+      await addTechnicianShift(actor, { equipmentId: text(form, "equipmentId"), staffUserId: text(form, "staffUserId"), startsAt: istTime(day, text(form, "from")), endsAt: istTime(day, text(form, "to")) });
+      message = "Shift added.";
+    } else if (op === "unshift") {
+      await removeTechnicianShift(actor, text(form, "shiftId"));
+      message = "Shift removed.";
+    } else if (op === "block") {
+      const result = await addMaintenanceBlock(actor, {
+        equipmentId: text(form, "equipmentId"),
+        startsAt: istTime(text(form, "day"), text(form, "from")),
+        endsAt: istTime(text(form, "endDay") || text(form, "day"), text(form, "to")),
+        reason: text(form, "reason"),
+      });
+      message = result.affectedBookings
+        ? `Maintenance block added. ${result.affectedBookings} booked patient(s) fall in this time. Please call them to reschedule.`
+        : "Maintenance block added. No booked patients are affected.";
+    } else if (op === "unblock") {
+      await removeMaintenanceBlock(actor, text(form, "blockId"));
+      message = "Maintenance block removed.";
+    } else if (op === "slots") {
+      const result = await createScanSlots(actor, {
+        equipmentId: text(form, "equipmentId"),
+        day: text(form, "day"),
+        from: text(form, "from"),
+        to: text(form, "to"),
+        minutes: Number(text(form, "minutes") || "0") || undefined,
+        capacity: Number(text(form, "capacity") || "1"),
+      });
+      message = `${result.count} scan slot(s) created.`;
+    } else if (op === "unslot") {
+      await removeScanSlot(actor, text(form, "slotId"));
+      message = "Slot removed.";
+    } else {
+      throw new DomainError("VALIDATION", "Unknown action", 400);
+    }
+  }, () => message);
 }

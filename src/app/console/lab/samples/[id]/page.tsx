@@ -12,7 +12,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { deny } from "@/components/guard";
 import { FormBox } from "@/components/form-box";
 import { ConfirmForm } from "@/components/confirm-form";
-import { Breadcrumbs, PageHeader, Panel, StatusPill } from "@/components/widgets";
+import { Breadcrumbs, PageHeader, Panel, StatusPill, Steps } from "@/components/widgets";
 import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Sample" };
@@ -60,6 +60,9 @@ async function SampleBody({ id }: { id: string }) {
       />
       {sample.rejectionReason ? <p role="status" className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">Rejected: {sample.rejectionReason}</p> : null}
       {lockedReport ? <p role="status" className="rounded-xl border bg-muted/50 px-4 py-3 text-sm">The report is {lockedReport.status.toLowerCase()}, so results are locked. <Link className="font-medium text-primary underline" href={`/console/lab/reports/${lockedReport.id}`}>Open the report</Link> to send it back or amend it.</p> : null}
+      {sample.status === "REJECTED" ? null : sample.status === "RECOLLECTION" ? <p role="status" className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">A new sample is needed. See the history for the reason.</p> : (
+        <Steps label="Sample progress" steps={["Pending", "Collected", "In transit", "Received", "Processing", "Resulted"]} current={["PENDING", "COLLECTED", "IN_TRANSIT", "RECEIVED", "PROCESSING", "RESULTED"].indexOf(sample.status)} complete={sample.status === "RESULTED"} />
+      )}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="grid gap-4 lg:col-span-2">
           <Panel title="Next step" description="You see only the steps your role can do now.">

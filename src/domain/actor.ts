@@ -62,8 +62,9 @@ export function homeFor(actor: Actor) {
   if (perms.has("tenant.manage") || perms.has("tenant.read")) return "/console/org";
   if (perms.has("imaging.perform") || perms.has("imaging.report")) return "/console/imaging";
   if (perms.has("results.enter") || perms.has("samples.collect") || perms.has("reports.approve")) return "/console/lab";
-  if (perms.has("invoices.manage") || perms.has("payments.refund")) return "/console/finance";
+  // Desk staff may also collect payments; keep them on the front desk, not Finance.
   if (perms.has("bookings.manage")) return "/console/desk";
+  if (perms.has("invoices.manage") || perms.has("payments.refund")) return "/console/finance";
   if (perms.has("referrals.read")) return "/console/doctor";
   return "/console/patient";
 }

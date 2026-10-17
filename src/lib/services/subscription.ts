@@ -51,6 +51,15 @@ export async function listPlans() {
   return prismaPrivileged.subscriptionPlan.findMany({ where: { active: true }, orderBy: { monthlyPricePaise: "asc" } });
 }
 
+export async function listPlansPage(paging: { skip: number; take: number }) {
+  const where = { active: true };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.subscriptionPlan.findMany({ where, orderBy: [{ monthlyPricePaise: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.subscriptionPlan.count({ where }),
+  ]);
+  return { items, total };
+}
+
 export async function ensureTrial(tenantId: string, planTier = "STARTER") {
   const existing = await prismaPrivileged.subscription.findFirst({ where: { tenantId, status: { in: ["TRIALING", "ACTIVE"] } } });
   if (existing) return existing;

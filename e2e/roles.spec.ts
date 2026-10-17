@@ -62,7 +62,7 @@ test("a patient cannot open another patient's booking or report", async ({ page 
   // The page streams, so notFound() may arrive after a 200 header; assert on content instead.
   expect([200, 404]).toContain(booking?.status());
   await expect(page.getByText("MS-ASHA01")).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("That page is not on this desk");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("We could not find that page");
   const api = await page.request.get("/api/v1/bookings/90000000-0000-4000-8000-000000000001");
   expect(api.status()).toBe(404);
 });

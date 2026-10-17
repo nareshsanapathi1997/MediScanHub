@@ -4,15 +4,16 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { currentSession } from "@/server/session";
 import { homeFor } from "@/domain/actor";
 import { buttonVariants } from "@/components/ui/button";
+import { NavLinks } from "@/components/marketing/nav-links";
 
 const links = [
   ["Tests", "/tests"],
+  ["Scans", "/imaging"],
   ["Packages", "/packages"],
-  ["Imaging", "/imaging"],
   ["Home collection", "/home-collection"],
   ["Centers", "/centers"],
   ["Compare", "/centers/compare"],
-];
+] as const;
 
 export async function SiteHeader({ brand }: { brand?: { name: string; brandColor: string } | null }) {
   const session = await currentSession();
@@ -20,10 +21,8 @@ export async function SiteHeader({ brand }: { brand?: { name: string; brandColor
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
         <Link href="/" aria-label="MediScan Hub home"><Logo /></Link>
-        <nav className="hidden items-center gap-5 text-sm md:flex" aria-label="Primary">
-          {links.map(([label, href]) => (
-            <Link key={href} href={href} className="font-medium text-muted-foreground transition-colors hover:text-foreground">{label}</Link>
-          ))}
+        <nav className="hidden items-center gap-1 text-sm lg:flex" aria-label="Primary">
+          <NavLinks links={links} variant="desktop" />
         </nav>
         <div className="flex items-center gap-2">
           {brand ? <span className="hidden rounded-full px-2 py-1 text-xs text-white sm:inline" style={{ background: brand.brandColor }}>{brand.name}</span> : null}
@@ -38,35 +37,38 @@ export async function SiteHeader({ brand }: { brand?: { name: string; brandColor
           )}
         </div>
       </div>
-      <nav className="flex gap-4 overflow-x-auto px-4 pb-3 text-sm md:hidden" aria-label="Mobile">
-        {links.map(([label, href]) => (
-          <Link key={href} href={href} className="whitespace-nowrap text-muted-foreground">{label}</Link>
-        ))}
+      <nav className="-mt-1 flex gap-1 overflow-x-auto px-3 pb-2.5 text-sm lg:hidden" aria-label="Mobile">
+        <NavLinks links={links} variant="mobile" />
       </nav>
     </header>
   );
 }
 
 export function SiteFooter() {
+  const year = new Date().getFullYear();
   return (
-    <footer className="mt-16 border-t">
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
-        <div>
+    <footer className="mt-16 border-t bg-card/50">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="grid content-start gap-3">
           <Logo />
-          <p className="mt-3 text-sm text-muted-foreground">Bookings, samples, imaging slots, and released reports for diagnostic centers. One codebase, strict tenant isolation.</p>
+          <p className="max-w-xs text-sm text-muted-foreground">Book blood tests, scans and health checkups at reviewed diagnostic centers. Get your report on your phone.</p>
         </div>
-        <div className="grid gap-2 text-sm">
-          <Link href="/about">About</Link>
-          <Link href="/faq">FAQ</Link>
-          <Link href="/contact">Contact</Link>
-          <Link href="/onboarding">List your center</Link>
-        </div>
-        <div className="grid gap-2 text-sm">
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-          <Link href="/cancellation">Cancellation</Link>
-        </div>
+        <FooterColumn title="For patients" links={[["Find a test", "/tests"], ["Book a scan", "/imaging"], ["Health packages", "/packages"], ["Home collection", "/home-collection"]]} />
+        <FooterColumn title="MediScan" links={[["About us", "/about"], ["Help and FAQ", "/faq"], ["Contact", "/contact"], ["List your center", "/onboarding"]]} />
+        <FooterColumn title="Policies" links={[["Privacy", "/privacy"], ["Terms", "/terms"], ["Cancellation and refunds", "/cancellation"]]} />
+      </div>
+      <div className="border-t">
+        <p className="mx-auto max-w-6xl px-4 py-5 text-xs text-muted-foreground">© {year} MediScan Hub · Demo with synthetic data. Reports are not a diagnosis; please show them to your doctor.</p>
       </div>
     </footer>
+  );
+}
+
+function FooterColumn({ title, links }: { title: string; links: Array<[string, string]> }) {
+  return (
+    <nav aria-label={title} className="grid content-start gap-2.5 text-sm">
+      <p className="font-medium">{title}</p>
+      {links.map(([label, href]) => <Link key={href} href={href} className="text-muted-foreground transition-colors hover:text-foreground">{label}</Link>)}
+    </nav>
   );
 }

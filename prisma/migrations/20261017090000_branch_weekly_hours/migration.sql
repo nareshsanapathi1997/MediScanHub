@@ -1,0 +1,2 @@
+ALTER TABLE "Branch" ADD COLUMN "weeklyHours" JSONB;
+ALTER TABLE "Branch" ADD COLUMN "holidays" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

@@ -36,7 +36,7 @@ export function TrendChart({ data, metric = "bookings" }: { data: Array<{ day: s
           <XAxis dataKey="day" tickFormatter={shortDay} tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} minTickGap={16} />
           <YAxis allowDecimals={false} width={metric === "revenuePaise" ? 64 : 28} tickFormatter={metric === "revenuePaise" ? (v: number) => inr(v) : undefined} tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} />
           <Tooltip content={<ChartTooltip />} />
-          <Area type="monotone" name="Bookings" dataKey={metric} stroke="var(--color-chart-1)" strokeWidth={2} fill={`url(#fill-${metric})`} />
+          <Area isAnimationActive={false} type="monotone" name="Bookings" dataKey={metric} stroke="var(--color-chart-1)" strokeWidth={2} fill={`url(#fill-${metric})`} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -55,7 +55,7 @@ export function StatusBars({ data }: { data: Array<{ label: string; value: numbe
           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} />
           <YAxis type="category" dataKey="label" width={92} tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} />
           <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--color-muted)" }} />
-          <Bar dataKey="value" name="Count" radius={[0, 6, 6, 0]}>
+          <Bar isAnimationActive={false} dataKey="value" name="Count" radius={[0, 6, 6, 0]}>
             {data.map((row, index) => <Cell key={row.label} fill={PALETTE[index % PALETTE.length]} />)}
           </Bar>
         </BarChart>

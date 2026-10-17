@@ -72,7 +72,9 @@ export function assertTransition<S extends string>(machine: Record<S, S[]>, from
   }
 }
 
-export function permissionForReportTransition(to: ReportStatus) {
+/** Imaging-only reports are written by radiology, so submitting one needs imaging.report instead of results.enter. */
+export function permissionForReportTransition(to: ReportStatus, imagingOnly = false) {
+  if (imagingOnly && to === "ENTERED") return "imaging.report";
   return REPORT_PERMISSION[to] ?? "reports.approve";
 }
 

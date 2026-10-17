@@ -1,3 +1,5 @@
+import { Pagination } from "@/components/pagination";
+import { fetchPage, parsePage } from "@/lib/pagination";
 import { requireSession } from "@/server/session";
 import { listReports, listSamples } from "@/lib/services/lab";
 import { listBookings } from "@/lib/services/booking";
@@ -14,26 +16,33 @@ import { ActionForm } from "@/components/action-form";
 
 export const metadata = { title: "Laboratory" };
 
-export default async function LabPage() {
+export default async function LabPage({ searchParams }: { searchParams: Promise<{ hc?: string }> }) {
   const { actor } = await requireSession();
+  const params = await searchParams;
   return (
     <Gate actor={actor} permission="samples.read">
       <NeedTenant actor={actor}>
-        <LabBody />
+        <LabBody params={params} />
       </NeedTenant>
     </Gate>
   );
 }
 
-async function LabBody() {
+async function LabBody({ params }: { params: { hc?: string } }) {
   const { actor } = await requireSession();
-  const [samples, reports, bookings] = await Promise.all([
+  const [samples, reports, minePage] = await Promise.all([
     listSamples(actor),
     listReports(actor).catch(() => []),
-    hasPermission(actor, "samples.collect", actor.activeTenantId) ? listBookings(actor, { pageSize: 50 }) : Promise.resolve({ rows: [] }),
+    hasPermission(actor, "samples.collect", actor.activeTenantId)
+      ? fetchPage(parsePage(params, 6, "hc"), async (args) => {
+          // Open home visits assigned to me (statuses that still have a next step).
+          const result = await listBookings(actor, { collectionAssigneeId: actor.userId, collectionStatus: ["REQUESTED", "ASSIGNED", "EN_ROUTE", "FAILED"], page: args.page, pageSize: args.pageSize });
+          return { items: result.rows, total: result.total };
+        })
+      : Promise.resolve({ items: [], total: 0, args: parsePage(params, 6, "hc") }),
   ]);
   // Only collections assigned to this user; managers assign and track the rest from the collections board.
-  const mine = bookings.rows.filter((booking) => booking.collection && booking.collection.assigneeId === actor.userId && COLLECTION_TRANSITIONS[booking.collection.status].length > 0);
+  const mine = minePage.items;
   const now = Date.now();
   const age = (date: Date) => {
     const hours = Math.max(0, Math.round((now - new Date(date).getTime()) / 36e5));
@@ -76,6 +85,7 @@ async function LabBody() {
               </li>
             ))}
           </ul>
+          <Pagination className="mt-4" pathname="/console/lab" params={params} pageKey="hc" page={minePage.args.page} pageSize={minePage.args.pageSize} total={minePage.total} noun={minePage.total === 1 ? "home visit" : "home visits"} label="Home visit pages" />
         </Panel>
       ) : null}
       <Panel title="Samples" description="Newest first. Open a barcode to receive the sample, enter results, or reject it with a reason.">
@@ -93,7 +103,18 @@ async function LabBody() {
           }))}
         />
       </Panel>
-      <Panel title="Reports" description="Steps: results entered → verified → approved → released to patient. Upload printouts or scans on the report page.">
+      <Panel title="Reports" description="Every report moves through four checks before the patient sees it. Upload printouts or scans on the report page.">
+        <ol className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Report pipeline">
+          {(["ENTERED", "VERIFIED", "APPROVED", "RELEASED"] as const).map((step, index) => (
+            <li key={step} className="relative rounded-xl border bg-muted/30 px-3 py-2.5">
+              <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Step {index + 1}</span>
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">{{ ENTERED: "Results entered", VERIFIED: "Verified", APPROVED: "Approved", RELEASED: "Released" }[step]}</span>
+                <span className="font-display text-xl tabular-nums">{reports.filter((report) => report.status === step).length}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
         <ReportTable
           rows={reports.map((report) => ({
             href: `/console/lab/reports/${report.id}`,

@@ -1,5 +1,7 @@
+import { Pagination } from "@/components/pagination";
+import { fetchPage, parsePage } from "@/lib/pagination";
 import { requireSession } from "@/server/session";
-import { listReports } from "@/lib/services/lab";
+import { listPatientReportsPage } from "@/lib/services/lab";
 import { formatWhen } from "@/lib/format";
 import { deny } from "@/components/guard";
 import { Download } from "@/components/icons";
@@ -9,11 +11,14 @@ import { PageHeader, EmptyState, StatusPill } from "@/components/widgets";
 
 export const metadata = { title: "My reports" };
 
-export default async function PatientReportsPage() {
+export default async function PatientReportsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const params = await searchParams;
   const { actor } = await requireSession();
   const blocked = deny(actor, "patient.portal");
   if (blocked) return blocked;
-  const reports = actor.patientId ? await listReports({ ...actor, activeTenantId: null }) : [];
+  const { items: reports, total, args: paging } = actor.patientId
+    ? await fetchPage(parsePage(params, 8), (args) => listPatientReportsPage({ ...actor, activeTenantId: null }, args))
+    : { items: [], total: 0, args: parsePage(params, 8) };
   return (
     <>
       <PageHeader eyebrow="Reports" title="My reports" description="Reports appear here after the doctor at the center checks and releases them. Download links work for 5 minutes and only for you." />
@@ -41,6 +46,7 @@ export default async function PatientReportsPage() {
           ) : null}
         </article>
       ))}
+      {total > 0 ? <Pagination pathname="/console/patient/reports" params={params} page={paging.page} pageSize={paging.pageSize} total={total} noun={total === 1 ? "report" : "reports"} label="Report pages" /> : null}
     </>
   );
 }

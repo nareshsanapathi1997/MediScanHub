@@ -1,4 +1,5 @@
-import type { Sex } from "@prisma/client";
+import type { Prisma, Sex } from "@prisma/client";
+import type { Paging } from "@/lib/pagination";
 import { prismaPrivileged } from "@/lib/db";
 import { DomainError } from "@/lib/errors";
 import type { Actor } from "@/domain/actor";
@@ -12,6 +13,16 @@ function requirePatient(actor: Actor) {
 export async function listDependents(actor: Actor) {
   const patientId = requirePatient(actor);
   return prismaPrivileged.patientDependent.findMany({ where: { guardianPatientId: patientId }, orderBy: { name: "asc" } });
+}
+
+export async function listDependentsPage(actor: Actor, paging: Paging) {
+  const patientId = requirePatient(actor);
+  const where = { guardianPatientId: patientId };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.patientDependent.findMany({ where, orderBy: [{ name: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.patientDependent.count({ where }),
+  ]);
+  return { items, total };
 }
 
 export async function saveDependent(actor: Actor, input: { id?: string; name: string; dateOfBirth: Date; sex: Sex; relation: string }) {
@@ -66,6 +77,22 @@ export async function getWallet(actor: Actor) {
   return { wallet, transactions };
 }
 
+/** Wallet balance plus one page of its transactions. */
+export async function getWalletPage(actor: Actor, paging: Paging) {
+  const patientId = requirePatient(actor);
+  const wallet = await prismaPrivileged.patientWallet.upsert({ where: { patientId }, create: { patientId, balancePaise: 0 }, update: {} });
+  const where = { patientId };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.walletTransaction.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.walletTransaction.count({ where }),
+  ]);
+  const [credits, debits] = await Promise.all([
+    prismaPrivileged.walletTransaction.aggregate({ where: { patientId, amountPaise: { gt: 0 } }, _sum: { amountPaise: true } }),
+    prismaPrivileged.walletTransaction.aggregate({ where: { patientId, amountPaise: { lt: 0 } }, _sum: { amountPaise: true } }),
+  ]);
+  return { wallet, items, total, earned: credits._sum.amountPaise ?? 0, used: -(debits._sum.amountPaise ?? 0) };
+}
+
 export async function creditWallet(patientId: string, amountPaise: number, reason: string, bookingId?: string) {
   if (amountPaise <= 0) return;
   await prismaPrivileged.$transaction(async (tx) => {
@@ -97,6 +124,16 @@ export async function listInsurance(actor: Actor) {
   return prismaPrivileged.insurancePolicy.findMany({ where: { patientId }, orderBy: { createdAt: "desc" } });
 }
 
+export async function listInsurancePage(actor: Actor, paging: Paging) {
+  const patientId = requirePatient(actor);
+  const where = { patientId };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.insurancePolicy.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.insurancePolicy.count({ where }),
+  ]);
+  return { items, total };
+}
+
 export async function saveInsurance(actor: Actor, input: { provider: string; policyNumber: string; tpaName?: string; validUntil?: Date }) {
   const patientId = requirePatient(actor);
   return prismaPrivileged.insurancePolicy.create({
@@ -123,6 +160,16 @@ export async function listInAppNotifications(actor: Actor, limit = 50) {
     orderBy: { createdAt: "desc" },
     take: limit,
   });
+}
+
+export async function listInAppNotificationsPage(actor: Actor, paging: Paging) {
+  const where = { userId: actor.userId, channel: "IN_APP" as const };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.notification.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.notification.count({ where }),
+  ]);
+  const unread = await prismaPrivileged.notification.count({ where: { ...where, readAt: null } });
+  return { items, total, unread };
 }
 
 export async function markNotificationRead(actor: Actor, id: string) {
@@ -155,6 +202,15 @@ export async function listPatientTickets(actor: Actor) {
   });
 }
 
+export async function listPatientTicketsPage(actor: Actor, paging: Paging) {
+  const where = { requesterId: actor.userId };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.supportTicket.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.supportTicket.count({ where }),
+  ]);
+  return { items, total };
+}
+
 export async function upcomingReminders(actor: Actor) {
   const patientId = requirePatient(actor);
   const now = new Date();
@@ -165,4 +221,17 @@ export async function upcomingReminders(actor: Actor) {
     orderBy: { scheduledAt: "asc" },
     take: 20,
   });
+}
+
+/** Visits in the next 14 days, one page at a time. */
+export async function upcomingRemindersPage(actor: Actor, paging: Paging) {
+  const patientId = requirePatient(actor);
+  const now = new Date();
+  const horizon = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const where: Prisma.BookingWhereInput = { patientId, status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] }, scheduledAt: { gte: now, lte: horizon } };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.booking.findMany({ where, include: { tenant: { select: { name: true } }, branch: { select: { name: true } }, dependent: true }, orderBy: [{ scheduledAt: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.booking.count({ where }),
+  ]);
+  return { items, total };
 }

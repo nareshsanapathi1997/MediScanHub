@@ -2,14 +2,13 @@ import { centerRegisterAction } from "@/server/actions";
 import { FormBox } from "@/components/form-box";
 import { StickyInput, StickyTextarea } from "@/components/sticky-field";
 import { LocationPicker } from "@/components/location-picker";
-import { PageHeader } from "@/components/widgets";
+import { AuthShell } from "@/components/auth-shell";
 
 export const metadata = { title: "Register a center" };
 
 export default function OnboardingPage() {
   return (
-    <main className="mx-auto grid max-w-xl gap-6 px-4 py-10">
-      <PageHeader eyebrow="Centers" title="List your diagnostic center" description="Fill in your details. Our team checks your documents (NABL/registration certificate, GST) and approves your center, usually within 2 working days." />
+    <AuthShell eyebrow="Centers" title="List your diagnostic center" description="Fill in your details. Our team checks your documents (NABL/registration certificate, GST) and approves your center, usually within 2 working days." wide>
       <FormBox action={centerRegisterAction} submit="Submit application">
         <label className="field">Your name<StickyInput name="ownerName" required autoComplete="name" /></label>
         <label className="field">Work email<StickyInput name="email" type="email" required autoComplete="email" /></label>
@@ -23,6 +22,6 @@ export default function OnboardingPage() {
         <label className="field">Address<StickyTextarea name="address" required rows={3} /></label>
         <label className="field">GSTIN (optional)<StickyInput name="gstin" placeholder="36ABCDE1234F1Z5" /></label>
       </FormBox>
-    </main>
+    </AuthShell>
   );
 }

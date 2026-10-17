@@ -1,4 +1,7 @@
+import { Pagination } from "@/components/pagination";
+import { fetchPage, parsePage } from "@/lib/pagination";
 import Link from "next/link";
+import { CalendarSearch } from "lucide-react";
 import { requireSession } from "@/server/session";
 import { listBookings } from "@/lib/services/booking";
 import { formatInr, formatWhen, titleCase } from "@/lib/format";
@@ -27,15 +30,20 @@ export default async function OrgBookingsPage({ searchParams }: { searchParams: 
 async function BookingsBody({ query }: { query: { status?: string; q?: string; from?: string; to?: string; page?: string } }) {
   const { actor } = await requireSession();
   const status = statuses.find((item) => item === query.status);
-  const page = Number(query.page ?? "1") || 1;
-  const result = await listBookings(actor, {
+  const filters = {
     status,
     query: query.q,
     from: query.from ? new Date(`${query.from}T00:00:00+05:30`) : undefined,
     to: query.to ? new Date(`${query.to}T23:59:59+05:30`) : undefined,
-    page,
+  };
+  const paged = await fetchPage(parsePage(query, 20), async (args) => {
+    const found = await listBookings(actor, { ...filters, page: args.page, pageSize: args.pageSize });
+    return { items: found.rows, total: found.total };
   });
-  const pages = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const page = paged.args.page;
+  const result = { rows: paged.items, total: paged.total, pageSize: paged.args.pageSize };
+  const today = istDate(0);
+  const inDays = (days: number) => istDate(days);
   return (
     <>
       <PageHeader eyebrow="Visits" title="Bookings" description={`${result.total} booking${result.total === 1 ? "" : "s"} found. Branch staff see only their own branches.`} />
@@ -51,7 +59,18 @@ async function BookingsBody({ query }: { query: { status?: string; q?: string; f
         <label className="field">To<input type="date" name="to" defaultValue={query.to} /></label>
         <div className="flex gap-2"><Button type="submit" className="h-11 flex-1 lg:flex-none">Apply</Button><Link href="/console/org/bookings" className={buttonVariants({ variant: "ghost", className: "h-11" })}>Reset</Link></div>
       </form>
-      {result.rows.length === 0 ? <EmptyState title="No bookings found" body="Try other dates, or tap Reset to clear the filters." /> : (
+      <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 text-sm" aria-label="Quick filters">
+        {[{ label: "All", params: {} as Record<string, string> }, { label: "Today", params: { from: today, to: today } }, { label: "Next 7 days", params: { from: today, to: inDays(7) } }, ...["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"].map((item) => ({ label: titleCase(item), params: { status: item } }))].map((chip) => {
+          const active = Object.keys(chip.params).length === 0 ? !query.status && !query.from && !query.to && !query.q : Object.entries(chip.params).every(([key, value]) => query[key as keyof typeof query] === value) && (chip.params.status ? !query.from : !query.status);
+          return (
+            <Link key={chip.label} href={`?${new URLSearchParams(chip.params)}`} aria-current={active ? "page" : undefined}
+              className={active ? "shrink-0 rounded-full bg-primary px-3.5 py-1.5 font-medium text-primary-foreground" : "shrink-0 rounded-full border bg-card px-3.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"}>
+              {chip.label}
+            </Link>
+          );
+        })}
+      </nav>
+      {result.rows.length === 0 ? <EmptyState icon={CalendarSearch} title="No bookings found" body="Try other dates, or tap Reset to clear the filters." /> : (
         <BookingTable rows={result.rows.map((booking) => ({
           href: `/console/org/bookings/${booking.id}`,
           code: booking.publicCode,
@@ -62,17 +81,11 @@ async function BookingsBody({ query }: { query: { status?: string; q?: string; f
           total: formatInr(booking.totalPaise),
         }))} />
       )}
-      {pages > 1 ? (
-        <nav aria-label="Pages" className="flex items-center justify-between text-sm">
-          {page > 1 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`?${new URLSearchParams({ ...clean(query), page: String(page - 1) })}`}>Previous page</Link> : <span />}
-          <span className="text-muted-foreground">Page {page} of {pages}</span>
-          {page < pages ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`?${new URLSearchParams({ ...clean(query), page: String(page + 1) })}`}>Next page</Link> : <span />}
-        </nav>
-      ) : null}
+      <Pagination pathname="/console/org/bookings" params={query} page={page} pageSize={result.pageSize} total={result.total} noun={result.total === 1 ? "booking" : "bookings"} label="Booking pages" />
     </>
   );
 }
 
-function clean(query: Record<string, string | undefined>) {
-  return Object.fromEntries(Object.entries(query).filter((entry): entry is [string, string] => Boolean(entry[1]) && entry[0] !== "page"));
+function istDate(offsetDays: number) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(Date.now() + offsetDays * 864e5));
 }

@@ -1,5 +1,6 @@
+import { cache } from "react";
 import type { Prisma, ServiceKind, SlotKind } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { prisma, prismaPrivileged } from "@/lib/db";
 import { withScope } from "@/lib/scope";
 import { DomainError } from "@/lib/errors";
 import { writeAudit } from "@/lib/audit";
@@ -7,16 +8,74 @@ import type { Actor } from "@/domain/actor";
 import { assertBranchAccess, assertPermission, hasPermission } from "@/domain/actor";
 import { assertCapacity } from "@/lib/services/subscription";
 
-export async function listCenters(city?: string) {
+function centerWhere(city?: string): Prisma.TenantWhereInput {
+  return {
+    status: "ACTIVE",
+    deletedAt: null,
+    ...(city ? { branches: { some: { city: { contains: city, mode: "insensitive" }, active: true, deletedAt: null } } } : {}),
+  };
+}
+const centerInclude = { branches: { where: { active: true, deletedAt: null }, select: { id: true, name: true, city: true, homeCollection: true } } } satisfies Prisma.TenantInclude;
+
+/** Public center cards — React.cache dedupes within a single RSC request. */
+export const listCenters = cache(async (city?: string) => {
   return prisma.tenant.findMany({
-    where: {
-      status: "ACTIVE",
-      deletedAt: null,
-      ...(city ? { branches: { some: { city: { contains: city, mode: "insensitive" }, active: true, deletedAt: null } } } : {}),
+    where: centerWhere(city),
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      city: true,
+      state: true,
+      brandColor: true,
+      logoUrl: true,
+      coverImageUrl: true,
+      branches: centerInclude.branches,
     },
-    include: { branches: { where: { active: true, deletedAt: null }, select: { id: true, name: true, city: true, homeCollection: true } } },
     orderBy: { name: "asc" },
   });
+});
+
+/** One page of active centers plus the total. */
+export async function listCentersPage(city: string | undefined, paging: { skip: number; take: number }) {
+  const where = centerWhere(city);
+  const [items, total] = await Promise.all([
+    prisma.tenant.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        city: true,
+        state: true,
+        brandColor: true,
+        logoUrl: true,
+        coverImageUrl: true,
+        branches: centerInclude.branches,
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+    prisma.tenant.count({ where }),
+  ]);
+  return { items, total };
+}
+
+/** Active branches that offer home collection, one page at a time. */
+export async function listHomeCollectionBranchesPage(paging: { skip: number; take: number }) {
+  const where: Prisma.BranchWhereInput = { homeCollection: true, active: true, deletedAt: null, tenant: { status: "ACTIVE", deletedAt: null } };
+  const [items, total] = await Promise.all([
+    prisma.branch.findMany({
+      where,
+      select: { id: true, name: true, city: true, tenant: { select: { name: true, slug: true } } },
+      orderBy: [{ tenant: { name: "asc" } }, { name: "asc" }, { id: "asc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+    prisma.branch.count({ where }),
+  ]);
+  return { items, total };
 }
 
 /** Price rows in force right now. Public pages must show the same price the server charges at checkout. */
@@ -25,67 +84,217 @@ function activePriceWhere(): Prisma.ServicePriceWhereInput {
   return { effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }] };
 }
 
+const profileBranchSelect = {
+  id: true,
+  name: true,
+  address: true,
+  city: true,
+  state: true,
+  phone: true,
+  email: true,
+  opensAt: true,
+  closesAt: true,
+  weeklyHours: true,
+  holidays: true,
+  homeCollection: true,
+  latitude: true,
+  longitude: true,
+} satisfies Prisma.BranchSelect;
+
+const profileServiceSelect = {
+  id: true,
+  name: true,
+  description: true,
+  kind: true,
+  modality: true,
+  sampleType: true,
+  preparation: true,
+  tatHours: true,
+  category: { select: { id: true, name: true, description: true } },
+  prices: {
+    where: activePriceWhere(),
+    orderBy: { effectiveFrom: "desc" as const },
+    select: { id: true, branchId: true, pricePaise: true, discountPaise: true, effectiveFrom: true },
+  },
+} satisfies Prisma.DiagnosticServiceSelect;
+
+const profilePackageServiceSelect = {
+  id: true,
+  name: true,
+  kind: true,
+  modality: true,
+  preparation: true,
+} satisfies Prisma.DiagnosticServiceSelect;
+
 export async function getCenterBySlug(slug: string) {
   const center = await prisma.tenant.findFirst({
     where: { slug, status: "ACTIVE", deletedAt: null },
-    include: {
-      branches: { where: { active: true, deletedAt: null }, orderBy: { name: "asc" } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      legalName: true,
+      gstin: true,
+      email: true,
+      phone: true,
+      city: true,
+      state: true,
+      address: true,
+      about: true,
+      brandColor: true,
+      accentColor: true,
+      logoUrl: true,
+      coverImageUrl: true,
+      galleryUrls: true,
+      branches: { where: { active: true, deletedAt: null }, orderBy: { name: "asc" }, select: profileBranchSelect },
       services: {
         where: { published: true, archivedAt: null },
-        include: { category: true, prices: { where: activePriceWhere(), orderBy: { effectiveFrom: "desc" } }, branchLinks: { where: { active: true }, select: { branchId: true } }, parameters: { orderBy: { position: "asc" }, include: { ranges: true } } },
         orderBy: { name: "asc" },
+        select: profileServiceSelect,
       },
-      packages: { where: { published: true, archivedAt: null }, include: { items: { include: { service: true } } }, orderBy: { name: "asc" } },
+      packages: {
+        where: { published: true, archivedAt: null },
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          pricePaise: true,
+          items: { select: { id: true, serviceId: true, service: { select: profilePackageServiceSelect } } },
+        },
+      },
     },
   });
   if (!center) return null;
-  return { ...center, coverImageUrl: center.coverImageUrl ?? null, galleryUrls: center.galleryUrls ?? [] };
+  // Verification documents are private; the public page only learns whether one was approved.
+  const approved = await prismaPrivileged.centerVerification.findFirst({ where: { tenantId: center.id, status: "APPROVED" }, orderBy: { reviewedAt: "desc" }, select: { reviewedAt: true } });
+  return { ...center, verifiedAt: approved ? (approved.reviewedAt ?? new Date(0)) : null, coverImageUrl: center.coverImageUrl ?? null, galleryUrls: center.galleryUrls ?? [] };
 }
 
-export async function getCenterByDomain(host: string | null) {
+export const getCenterByDomain = cache(async (host: string | null) => {
   if (!host) return null;
   const domain = host.split(":")[0]?.toLowerCase();
   if (!domain || domain === "localhost" || domain === "127.0.0.1") return null;
-  return prisma.tenant.findFirst({ where: { customDomain: domain, status: "ACTIVE", deletedAt: null } });
+  return prisma.tenant.findFirst({
+    where: { customDomain: domain, status: "ACTIVE", deletedAt: null },
+    select: { id: true, name: true, slug: true, brandColor: true },
+  });
+});
+
+type ServiceSearch = { query?: string; city?: string; kind?: ServiceKind; modality?: string };
+
+function serviceWhere(input: ServiceSearch): Prisma.DiagnosticServiceWhereInput {
+  return {
+    published: true,
+    archivedAt: null,
+    tenant: { status: "ACTIVE", deletedAt: null },
+    ...(input.kind ? { kind: input.kind } : {}),
+    ...(input.modality ? { modality: input.modality as Prisma.DiagnosticServiceWhereInput["modality"] } : {}),
+    ...(input.city
+      ? { branchLinks: { some: { active: true, branch: { city: { contains: input.city, mode: "insensitive" }, active: true, deletedAt: null } } } }
+      : {}),
+    ...(input.query
+      ? {
+          OR: [
+            { name: { contains: input.query, mode: "insensitive" } },
+            { code: { contains: input.query, mode: "insensitive" } },
+            { description: { contains: input.query, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
 }
 
-export async function searchServices(input: { query?: string; city?: string; kind?: ServiceKind }) {
+function serviceInclude() {
+  return {
+    tenant: { select: { name: true, slug: true, city: true, brandColor: true } },
+    category: { select: { id: true, name: true } },
+    prices: {
+      where: activePriceWhere(),
+      orderBy: { effectiveFrom: "desc" as const },
+      take: 1,
+      select: { pricePaise: true, discountPaise: true, branch: { select: { id: true, name: true, city: true } } },
+    },
+  } satisfies Prisma.DiagnosticServiceInclude;
+}
+
+/** A short list of services (home page teasers). Listing pages use searchServicesPage. */
+export const searchServices = cache(async (input: ServiceSearch, limit = 12) => {
   return prisma.diagnosticService.findMany({
-    where: {
-      published: true,
-      archivedAt: null,
-      tenant: { status: "ACTIVE", deletedAt: null },
-      ...(input.kind ? { kind: input.kind } : {}),
-      ...(input.city
-        ? { branchLinks: { some: { active: true, branch: { city: { contains: input.city, mode: "insensitive" }, active: true, deletedAt: null } } } }
-        : {}),
-      ...(input.query
-        ? {
-            OR: [
-              { name: { contains: input.query, mode: "insensitive" } },
-              { code: { contains: input.query, mode: "insensitive" } },
-              { description: { contains: input.query, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      tenant: { select: { name: true, slug: true, city: true, brandColor: true } },
-      category: true,
-      prices: { where: activePriceWhere(), orderBy: { effectiveFrom: "desc" }, take: 1, include: { branch: { select: { id: true, name: true, city: true } } } },
+    where: serviceWhere(input),
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      kind: true,
+      modality: true,
+      tatHours: true,
+      sampleType: true,
+      preparation: true,
+      tenant: serviceInclude().tenant,
+      category: serviceInclude().category,
+      prices: serviceInclude().prices,
     },
     orderBy: { name: "asc" },
-    take: 80,
+    take: limit,
   });
+});
+
+/** One page of published services plus the total, for server-side pagination. */
+export async function searchServicesPage(input: ServiceSearch, paging: { skip: number; take: number }) {
+  const where = serviceWhere(input);
+  const include = serviceInclude();
+  const [items, total] = await Promise.all([
+    prisma.diagnosticService.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        kind: true,
+        modality: true,
+        tatHours: true,
+        sampleType: true,
+        preparation: true,
+        tenant: include.tenant,
+        category: include.category,
+        prices: include.prices,
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+    prisma.diagnosticService.count({ where }),
+  ]);
+  return { items, total };
 }
 
-export async function listPublicPackages() {
-  return prisma.testPackage.findMany({
-    where: { published: true, archivedAt: null, tenant: { status: "ACTIVE", deletedAt: null } },
-    include: { tenant: { select: { name: true, slug: true, city: true, brandColor: true } }, items: { include: { service: true } } },
-    orderBy: { name: "asc" },
-    take: 40,
-  });
+/** Scan modalities that have at least one bookable study (for the filter chips). */
+export async function listScanModalities() {
+  const rows = await prisma.diagnosticService.findMany({ where: serviceWhere({ kind: "IMAGING" }), select: { modality: true }, distinct: ["modality"] });
+  return rows.map((row) => row.modality).filter((value): value is NonNullable<typeof value> => value != null);
+}
+
+const packageWhere: Prisma.TestPackageWhereInput = { published: true, archivedAt: null, tenant: { status: "ACTIVE", deletedAt: null } };
+const packageSelect = {
+  id: true,
+  name: true,
+  description: true,
+  pricePaise: true,
+  tenant: { select: { name: true, slug: true, city: true, brandColor: true } },
+  items: { select: { serviceId: true, service: { select: { name: true } } } },
+} satisfies Prisma.TestPackageSelect;
+
+export const listPublicPackages = cache(async (limit = 12) => {
+  return prisma.testPackage.findMany({ where: packageWhere, select: packageSelect, orderBy: { name: "asc" }, take: limit });
+});
+
+export async function listPublicPackagesPage(paging: { skip: number; take: number }) {
+  const [items, total] = await Promise.all([
+    prisma.testPackage.findMany({ where: packageWhere, select: packageSelect, orderBy: [{ name: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prisma.testPackage.count({ where: packageWhere }),
+  ]);
+  return { items, total };
 }
 
 export async function listSlots(branchId: string, day: string, kind: SlotKind) {
@@ -95,7 +304,16 @@ export async function listSlots(branchId: string, day: string, kind: SlotKind) {
   const slots = await prisma.availabilitySlot.findMany({
     where: { branchId, kind, startsAt: { gte: new Date(), lt: end }, endsAt: { gt: start } },
     orderBy: { startsAt: "asc" },
-    include: { equipment: true },
+    select: {
+      id: true,
+      branchId: true,
+      kind: true,
+      startsAt: true,
+      endsAt: true,
+      capacity: true,
+      bookedCount: true,
+      equipmentId: true,
+    },
   });
   return slots.filter((slot) => slot.bookedCount < slot.capacity);
 }
@@ -234,7 +452,7 @@ export async function setServicePrice(actor: Actor, input: { branchId: string; s
   });
 }
 
-export async function createBranch(actor: Actor, input: { name: string; code: string; address: string; city: string; state: string; phone: string; homeCollection: boolean; opensAt: string; closesAt: string }) {
+export async function createBranch(actor: Actor, input: { name: string; code: string; address: string; city: string; state: string; phone: string; homeCollection: boolean; opensAt: string; closesAt: string; weeklyHours?: Prisma.InputJsonValue; holidays?: string[] }) {
   const scope = tenantScope(actor);
   assertPermission(actor, "branches.manage", scope.tenantId);
   return withScope(scope, async (tx) => {
@@ -263,6 +481,7 @@ export async function createSlots(actor: Actor, input: { branchId: string; kind:
   assertPermission(actor, "bookings.manage", scope.tenantId);
   assertBranchAccess(actor, scope.tenantId, input.branchId);
   if (input.capacity < 1 || input.capacity > 50) throw new DomainError("SLOT", "Capacity must be between 1 and 50", 400);
+  if (input.kind === "IMAGING") throw new DomainError("SLOT", "Scan slots belong to a machine. Add them from Scan rooms.", 400);
   return withScope(scope, async (tx) => {
     const created = [];
     for (const time of input.times) {
@@ -309,26 +528,49 @@ export async function listBookablePackages(actor: Actor) {
 }
 
 export async function compareCenterMetrics(slugs: string[]) {
+  const unique = [...new Set(slugs)].slice(0, 4);
+  if (unique.length === 0) return [];
   const now = new Date();
-  const centers = await listCenters();
-  const picked = centers.filter((center) => slugs.includes(center.slug)).slice(0, 4);
-  return Promise.all(
-    picked.map(async (center) => {
-      const branchCount = center.branches.length;
-      const homeCollectionBranches = center.branches.filter((branch) => branch.homeCollection).length;
-      const sample = await prisma.servicePrice.findFirst({
-        where: {
-          tenantId: center.id,
-          effectiveFrom: { lte: now },
-          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
-          service: { published: true, archivedAt: null },
-        },
-        orderBy: { pricePaise: "asc" },
-      });
-      const samplePricePaise = sample ? sample.pricePaise - sample.discountPaise : null;
-      return { center, branchCount, homeCollectionBranches, samplePricePaise };
-    }),
-  );
+  const centers = await prisma.tenant.findMany({
+    where: { slug: { in: unique }, status: "ACTIVE", deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      city: true,
+      state: true,
+      brandColor: true,
+      logoUrl: true,
+      coverImageUrl: true,
+      branches: centerInclude.branches,
+    },
+    orderBy: { name: "asc" },
+  });
+  const samples = await prisma.servicePrice.findMany({
+    where: {
+      tenantId: { in: centers.map((center) => center.id) },
+      effectiveFrom: { lte: now },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+      service: { published: true, archivedAt: null },
+    },
+    orderBy: { pricePaise: "asc" },
+    select: { tenantId: true, pricePaise: true, discountPaise: true },
+  });
+  const lowestByTenant = new Map<string, number>();
+  for (const sample of samples) {
+    if (lowestByTenant.has(sample.tenantId)) continue;
+    lowestByTenant.set(sample.tenantId, sample.pricePaise - sample.discountPaise);
+  }
+  const bySlug = new Map(centers.map((center) => [center.slug, center]));
+  return unique
+    .map((slug) => bySlug.get(slug))
+    .filter((center): center is NonNullable<typeof center> => Boolean(center))
+    .map((center) => ({
+      center,
+      branchCount: center.branches.length,
+      homeCollectionBranches: center.branches.filter((branch) => branch.homeCollection).length,
+      samplePricePaise: lowestByTenant.get(center.id) ?? null,
+    }));
 }
 
 export async function tenantBranches(actor: Actor) {
@@ -407,4 +649,17 @@ export async function tenantPackages(actor: Actor) {
   return withScope(scope, (tx) =>
     tx.testPackage.findMany({ where: { tenantId: scope.tenantId, archivedAt: null }, include: { items: { include: { service: true } } }, orderBy: { name: "asc" } }),
   );
+}
+
+export async function tenantPackagesPage(actor: Actor, paging: { skip: number; take: number }) {
+  const scope = tenantScope(actor);
+  assertPermission(actor, "tenant.read", scope.tenantId);
+  const where = { tenantId: scope.tenantId, archivedAt: null };
+  return withScope(scope, async (tx) => {
+    const [items, total] = await Promise.all([
+      tx.testPackage.findMany({ where, include: { items: { include: { service: true } } }, orderBy: [{ name: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+      tx.testPackage.count({ where }),
+    ]);
+    return { items, total };
+  });
 }

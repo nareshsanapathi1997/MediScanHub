@@ -5,41 +5,87 @@
     "description": "Session cookie plus x-csrf-token for mutations. Login and the webhook are exempt."
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://127.0.0.1:43123" },
-    { "key": "csrf", "value": "" },
-    { "key": "bookingId", "value": "" },
-    { "key": "sampleId", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:43123"
+    },
+    {
+      "key": "csrf",
+      "value": ""
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "sampleId",
+      "value": ""
+    },
+    {
+      "key": "reportId",
+      "value": ""
+    },
+    {
+      "key": "fileId",
+      "value": ""
+    }
   ],
   "item": [
     {
       "name": "Health",
-      "request": { "method": "GET", "url": "{{baseUrl}}/api/health" }
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/health"
+      }
     },
     {
       "name": "Login",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"email\": \"patient.asha@mediscan.test\",\n  \"password\": \"Synthetic#2026\"\n}" },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"patient.asha@mediscan.test\",\n  \"password\": \"Synthetic#2026\"\n}"
+        },
         "url": "{{baseUrl}}/api/v1/auth/login"
       }
     },
     {
       "name": "Session",
-      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/auth/session" }
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/auth/session"
+      }
     },
     {
       "name": "Search tests",
-      "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/catalog/search?city=Hyderabad&q=CBC" }
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/catalog/search?city=Hyderabad&q=CBC"
+      }
     },
     {
       "name": "Create booking",
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "x-csrf-token", "value": "{{csrf}}" },
-          { "key": "Idempotency-Key", "value": "postman-booking-1" }
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-csrf-token",
+            "value": "{{csrf}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "postman-booking-1"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -53,8 +99,14 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "x-mediscan-signature", "value": "hmac-sha256-of-raw-body" }
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-mediscan-signature",
+            "value": "hmac-sha256-of-raw-body"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -68,8 +120,14 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "x-csrf-token", "value": "{{csrf}}" }
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-csrf-token",
+            "value": "{{csrf}}"
+          }
         ],
         "body": {
           "mode": "raw",
@@ -82,8 +140,57 @@
       "name": "Run notification worker",
       "request": {
         "method": "POST",
-        "header": [{ "key": "x-cron-secret", "value": "dev-cron-secret-change-me" }],
+        "header": [
+          {
+            "key": "x-cron-secret",
+            "value": "dev-cron-secret-change-me"
+          }
+        ],
         "url": "{{baseUrl}}/api/v1/notifications/process"
+      }
+    },
+    {
+      "name": "Scan slots (CT)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/slots?branchId=40000000-0000-4000-8000-000000000001&day=2026-10-20&kind=IMAGING&modality=CT"
+      }
+    },
+    {
+      "name": "Upload DICOM study",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "x-csrf-token",
+            "value": "{{csrf}}"
+          },
+          {
+            "key": "content-type",
+            "value": "application/octet-stream"
+          }
+        ],
+        "body": {
+          "mode": "file",
+          "file": {
+            "src": ""
+          }
+        },
+        "url": "{{baseUrl}}/api/v1/uploads/dicom?reportId={{reportId}}&name=study.zip",
+        "description": "Radiology staff session. Body is the raw .dcm file or a .zip of the study, up to 500 MB."
+      }
+    },
+    {
+      "name": "Remove report file",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-csrf-token",
+            "value": "{{csrf}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/report-files/{{fileId}}"
       }
     }
   ]

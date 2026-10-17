@@ -76,6 +76,8 @@ async function main() {
     { id: ID.techApex, email: "tech.apex@mediscan.test", name: "Synth Technician Imran", phone: "+919800000005" },
     { id: ID.pathApex, email: "path.apex@mediscan.test", name: "Synth Pathologist Dr. Sen", phone: "+919800000006" },
     { id: ID.radioApex, email: "radio.apex@mediscan.test", name: "Synth Radiologist Dr. Kapoor", phone: "+919800000007" },
+    { id: ID.radio2Apex, email: "radio2.apex@mediscan.test", name: "Synth Radiographer Suresh Reddy", phone: "+919800000031" },
+    { id: ID.radio3Apex, email: "radio3.apex@mediscan.test", name: "Synth Radiographer Farah Khan", phone: "+919800000032" },
     { id: ID.accountsApex, email: "accounts.apex@mediscan.test", name: "Synth Accountant Priya", phone: "+919800000008" },
     { id: ID.ownerNimbus, email: "owner.nimbus@mediscan.test", name: "Synth Owner Nimbus", phone: "+919800000009" },
     { id: ID.ownerCoastal, email: "owner.coastal@mediscan.test", name: "Synth Owner Coastal", phone: "+919800000010" },
@@ -121,8 +123,14 @@ async function main() {
       brandColor: "#0F766E",
       accentColor: "#155E75",
       logoUrl: "/centers/apex-diagnostics/logo.svg",
-      coverImageUrl: "/centers/apex-diagnostics/cover.svg",
+      // Cover + gallery stored on the tenant — public UI reads these URLs only (no runtime marketing fallbacks).
+      coverImageUrl: "/marketing/defaults/07-clinic-exterior.jpg",
       galleryUrls: [
+        "/marketing/defaults/01-reception.jpg",
+        "/marketing/defaults/02-lab.jpg",
+        "/marketing/defaults/04-imaging.jpg",
+        "/marketing/defaults/05-home-collection.jpg",
+        "/marketing/defaults/03-phlebotomy.jpg",
         "/centers/apex-diagnostics/gallery-reception.svg",
         "/centers/apex-diagnostics/gallery-lab.svg",
         "/centers/apex-diagnostics/gallery-imaging.svg",
@@ -148,6 +156,12 @@ async function main() {
       status: "ACTIVE",
       brandColor: "#1D4ED8",
       accentColor: "#0F766E",
+      coverImageUrl: "/marketing/defaults/01-reception.jpg",
+      galleryUrls: [
+        "/marketing/defaults/02-lab.jpg",
+        "/marketing/defaults/03-phlebotomy.jpg",
+        "/marketing/defaults/10-sample-kit.jpg",
+      ],
       email: "hello.nimbus@mediscan.test",
       phone: "+918040002222",
       city: "Bengaluru",
@@ -176,8 +190,8 @@ async function main() {
 
   await prisma.branch.createMany({
     data: [
-      { id: ID.jubilee, tenantId: ID.apex, name: "Jubilee Hills", code: "JUB", address: "Plot 12, Road No. 36, Jubilee Hills, Hyderabad 500033", city: "Hyderabad", state: "Telangana", phone: "+914040001112", homeCollection: true, opensAt: "07:00", closesAt: "20:00" },
-      { id: ID.gachibowli, tenantId: ID.apex, name: "Gachibowli", code: "GAC", address: "Survey No. 45, Financial District, Gachibowli, Hyderabad 500032", city: "Hyderabad", state: "Telangana", phone: "+914040001113", homeCollection: false },
+      { id: ID.jubilee, tenantId: ID.apex, name: "Jubilee Hills", code: "JUB", address: "Plot 12, Road No. 36, Jubilee Hills, Hyderabad 500033", city: "Hyderabad", state: "Telangana", phone: "+914040001112", homeCollection: true, opensAt: "07:00", closesAt: "20:00", weeklyHours: weekHours("07:00", "20:00", { opensAt: "08:00", closesAt: "14:00" }), holidays: ["2026-10-20", "2026-11-08"] },
+      { id: ID.gachibowli, tenantId: ID.apex, name: "Gachibowli", code: "GAC", address: "Survey No. 45, Financial District, Gachibowli, Hyderabad 500032", city: "Hyderabad", state: "Telangana", phone: "+914040001113", homeCollection: false, weeklyHours: weekHours("07:00", "20:00", null) },
       { id: ID.indiranagar, tenantId: ID.nimbus, name: "Indiranagar", code: "IND", address: "560, 100 Feet Road, Indiranagar, Bengaluru 560038", city: "Bengaluru", state: "Karnataka", phone: "+918040002223", homeCollection: true },
       { id: ID.bandra, tenantId: ID.coastal, name: "Bandra", code: "BAN", address: "14, Linking Road, Bandra West, Mumbai 400050", city: "Mumbai", state: "Maharashtra", phone: "+912240003334", homeCollection: false, active: false },
     ],
@@ -191,6 +205,8 @@ async function main() {
     [ID.techApex, ID.apex, "LAB_TECHNICIAN", ID.jubilee],
     [ID.pathApex, ID.apex, "PATHOLOGIST", ID.jubilee],
     [ID.radioApex, ID.apex, "RADIOLOGY", ID.jubilee],
+    [ID.radio2Apex, ID.apex, "RADIOLOGY", ID.gachibowli],
+    [ID.radio3Apex, ID.apex, "RADIOLOGY", ID.jubilee],
     [ID.accountsApex, ID.apex, "ACCOUNTANT", ID.jubilee],
     [ID.doctor, ID.apex, "DOCTOR", ""],
     [ID.ownerNimbus, ID.nimbus, "CENTER_OWNER", ""],
@@ -235,12 +251,14 @@ async function main() {
   await labService({ id: "80000000-0000-4000-8000-000000000008", tenantId: ID.apex, categoryId: ID.catChem, name: "Kidney Function Test (KFT)", slug: "kft", code: "KFT", description: "Checks kidney health: urea, creatinine, uric acid and electrolytes.", sampleType: "Serum", tatHours: 12, price: 64900, branchIds: [ID.jubilee, ID.gachibowli] });
   await labService({ id: "80000000-0000-4000-8000-000000000009", tenantId: ID.apex, categoryId: ID.catThyroid, name: "Thyroid Profile (T3, T4, TSH)", slug: "thyroid-profile", code: "THY", description: "Full thyroid check with T3, T4 and TSH.", sampleType: "Serum", tatHours: 24, price: 59900, branchIds: [ID.jubilee, ID.gachibowli] });
   await labService({ id: "80000000-0000-4000-8000-000000000010", tenantId: ID.apex, categoryId: ID.catChem, name: "Fasting Blood Sugar (FBS)", slug: "fbs", code: "FBS", description: "Blood sugar after an overnight fast. Used to check for diabetes.", sampleType: "Fluoride plasma", tatHours: 6, price: 15000, branchIds: [ID.jubilee, ID.gachibowli], preparation: "Fast for 8–10 hours. Plain water is fine. Take your usual medicines only if your doctor says so." });
-  async function imagingService(input: { id: string; name: string; slug: string; code: string; modality: string; description: string; preparation: string; tatHours: number; price: number }) {
+  async function imagingService(input: { id: string; name: string; slug: string; code: string; modality: string; description: string; preparation: string; tatHours: number; price: number; branchIds?: string[] }) {
     await prisma.diagnosticService.create({ data: { id: input.id, tenantId: ID.apex, categoryId: ID.catImaging, name: input.name, slug: input.slug, code: input.code, kind: "IMAGING", modality: input.modality, description: input.description, preparation: input.preparation, tatHours: input.tatHours, published: true } });
-    await prisma.branchService.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, serviceId: input.id, active: true } });
-    await prisma.servicePrice.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, serviceId: input.id, pricePaise: input.price } });
+    for (const branchId of input.branchIds ?? [ID.jubilee]) {
+      await prisma.branchService.create({ data: { tenantId: ID.apex, branchId, serviceId: input.id, active: true } });
+      await prisma.servicePrice.create({ data: { tenantId: ID.apex, branchId, serviceId: input.id, pricePaise: input.price } });
+    }
   }
-  await imagingService({ id: "80000000-0000-4000-8000-000000000011", name: "Chest X-ray (PA view)", slug: "xray-chest", code: "XR-CHEST", modality: "XR", description: "X-ray of the chest to check the lungs and heart.", preparation: "Remove metal items like chains and wear loose clothes. Tell the staff if you may be pregnant.", tatHours: 24, price: 40000 });
+  await imagingService({ id: "80000000-0000-4000-8000-000000000011", name: "Chest X-ray (PA view)", slug: "xray-chest", code: "XR-CHEST", modality: "XR", description: "X-ray of the chest to check the lungs and heart.", preparation: "Remove metal items like chains and wear loose clothes. Tell the staff if you may be pregnant.", tatHours: 24, price: 40000, branchIds: [ID.jubilee, ID.gachibowli] });
   await imagingService({ id: "80000000-0000-4000-8000-000000000012", name: "CT Brain (plain)", slug: "ct-brain", code: "CT-BRAIN", modality: "CT", description: "CT scan of the head, without contrast dye.", preparation: "No fasting needed. Bring your old scans and doctor's prescription.", tatHours: 24, price: 250000 });
   await imagingService({ id: "80000000-0000-4000-8000-000000000013", name: "MRI Knee", slug: "mri-knee", code: "MRI-KNEE", modality: "MR", description: "MRI scan of one knee to check ligaments, cartilage and bones.", preparation: "Remove all metal. Tell the staff if you have a pacemaker, implant or metal in your body.", tatHours: 48, price: 550000 });
 
@@ -262,6 +280,8 @@ async function main() {
   });
   await prisma.branchService.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, serviceId: ID.usg, active: true } });
   await prisma.servicePrice.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, serviceId: ID.usg, pricePaise: 180000 } });
+  await prisma.branchService.create({ data: { tenantId: ID.apex, branchId: ID.gachibowli, serviceId: ID.usg, active: true } });
+  await prisma.servicePrice.create({ data: { tenantId: ID.apex, branchId: ID.gachibowli, serviceId: ID.usg, pricePaise: 170000 } });
 
   await prisma.testParameter.create({
     data: {
@@ -300,8 +320,32 @@ async function main() {
     },
   });
 
-  const equipment = await prisma.equipment.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, name: "USG Room 2", modality: "US", room: "Imaging 2" } });
-  await prisma.equipmentSchedule.create({ data: { tenantId: ID.apex, equipmentId: equipment.id, staffUserId: ID.radioApex, startsAt: at(1, "09:00"), endsAt: at(1, "13:00") } });
+  // Synthetic scan rooms: one entry per machine, each with technician shifts and its own slots.
+  const rooms = [
+    { key: "jubXr", branchId: ID.jubilee, name: "Digital X-ray (DR)", modality: "XR", room: "Ground floor, Room 2", slotMinutes: 10, capacity: 2, staff: ID.radio3Apex, from: "08:00", to: "12:00" },
+    { key: "jubCt", branchId: ID.jubilee, name: "CT 128-slice", modality: "CT", room: "Ground floor, Room 4", slotMinutes: 20, capacity: 1, staff: ID.radio3Apex, from: "14:00", to: "18:00" },
+    { key: "jubUs", branchId: ID.jubilee, name: "USG Room 2", modality: "US", room: "First floor, Room 6", slotMinutes: 20, capacity: 1, staff: ID.radioApex, from: "09:00", to: "13:00" },
+    { key: "jubMr", branchId: ID.jubilee, name: "MRI 1.5 Tesla", modality: "MR", room: "Basement, MRI suite", slotMinutes: 40, capacity: 1, staff: ID.radioApex, from: "14:00", to: "19:20" },
+    { key: "gacXr", branchId: ID.gachibowli, name: "Digital X-ray", modality: "XR", room: "Ground floor, Room 1", slotMinutes: 10, capacity: 2, staff: ID.radio2Apex, from: "08:00", to: "12:00" },
+    { key: "gacUs", branchId: ID.gachibowli, name: "Ultrasound", modality: "US", room: "Ground floor, Room 3", slotMinutes: 20, capacity: 1, staff: ID.radio2Apex, from: "14:00", to: "17:00" },
+  ] as const;
+  const roomIds: Record<string, string> = {};
+  for (const room of rooms) {
+    const equipment = await prisma.equipment.create({ data: { tenantId: ID.apex, branchId: room.branchId, name: room.name, modality: room.modality, room: room.room, slotMinutes: room.slotMinutes } });
+    roomIds[room.key] = equipment.id;
+    for (let day = 1; day <= 7; day += 1) {
+      const shiftStart = at(day, room.from);
+      const shiftEnd = at(day, room.to);
+      await prisma.equipmentSchedule.create({ data: { tenantId: ID.apex, equipmentId: equipment.id, staffUserId: room.staff, startsAt: shiftStart, endsAt: shiftEnd } });
+      const slots = [];
+      for (let t = shiftStart.getTime(); t + room.slotMinutes * 60_000 <= shiftEnd.getTime(); t += room.slotMinutes * 60_000) {
+        slots.push({ tenantId: ID.apex, branchId: room.branchId, kind: "IMAGING" as const, equipmentId: equipment.id, startsAt: new Date(t), endsAt: new Date(t + room.slotMinutes * 60_000), capacity: room.capacity });
+      }
+      await prisma.availabilitySlot.createMany({ data: slots });
+    }
+  }
+  // Planned CT service on day 2 afternoon: those slots stay in the list for staff but patients cannot book them.
+  await prisma.equipmentBlock.create({ data: { tenantId: ID.apex, equipmentId: roomIds.jubCt!, startsAt: at(2, "14:00"), endsAt: at(2, "16:00"), reason: "AMC service visit (synthetic)", createdById: ID.radioApex } });
 
   const slotTimes = ["07:30", "08:00", "08:30", "09:00", "16:00"];
   for (const day of [1, 2, 3]) {
@@ -309,8 +353,11 @@ async function main() {
       await prisma.availabilitySlot.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, kind: "CENTER", startsAt: at(day, time), endsAt: new Date(at(day, time).getTime() + 30 * 60 * 1000), capacity: 4 } });
       await prisma.availabilitySlot.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, kind: "HOME", startsAt: at(day, time), endsAt: new Date(at(day, time).getTime() + 60 * 60 * 1000), capacity: 2 } });
     }
-    await prisma.availabilitySlot.create({ data: { tenantId: ID.apex, branchId: ID.jubilee, kind: "IMAGING", startsAt: at(day, "11:00"), endsAt: at(day, "11:30"), capacity: 2, equipmentId: equipment.id } });
     await prisma.availabilitySlot.create({ data: { tenantId: ID.nimbus, branchId: ID.indiranagar, kind: "CENTER", startsAt: at(day, "09:30"), endsAt: at(day, "10:00"), capacity: 3 } });
+    // Gachibowli is a walk-in lab branch: morning sample-collection slots only.
+    for (const time of ["08:00", "09:00", "10:00", "11:00"]) {
+      await prisma.availabilitySlot.create({ data: { tenantId: ID.apex, branchId: ID.gachibowli, kind: "CENTER", startsAt: at(day, time), endsAt: new Date(at(day, time).getTime() + 30 * 60 * 1000), capacity: 3 } });
+    }
   }
   await prisma.availabilitySlot.create({ data: { id: ID.slotRace, tenantId: ID.apex, branchId: ID.jubilee, kind: "CENTER", startsAt: at(4, "18:00"), endsAt: at(4, "18:30"), capacity: 1 } });
 
@@ -394,6 +441,7 @@ async function main() {
       branchId: ID.jubilee,
       patientId: ID.patientMeera,
       createdById: ID.deskApex,
+      referralUserId: ID.doctor,
       publicCode: "MS-MEERA1",
       visitType: "WALK_IN",
       status: "COMPLETED",
@@ -437,6 +485,12 @@ async function main() {
   await mkdir(path.dirname(path.join(root, storageKey)), { recursive: true });
   await writeFile(path.join(root, storageKey), pdf);
   await prisma.reportVersion.create({ data: { tenantId: ID.apex, reportId: report.id, version: 1, storageKey, checksum: sha256(pdf.toString("base64")), createdById: ID.pathApex, note: "Initial release" } });
+
+  // Apex went through MediScan review: one approved (synthetic) registration document backs its "Verified" badge.
+  const verificationKey = `tenants/${ID.apex}/verification/clinical-establishment-registration.pdf`;
+  await mkdir(path.dirname(path.join(root, verificationKey)), { recursive: true });
+  await writeFile(path.join(root, verificationKey), pdf);
+  await prisma.centerVerification.create({ data: { tenantId: ID.apex, documentType: "Clinical establishment registration (synthetic)", storageKey: verificationKey, fileName: "registration.pdf", status: "APPROVED", reviewerId: ID.super, reviewedAt: new Date(), notes: "Synthetic demo document" } });
 
   // Every booking implies a chart at that center; without it RLS hides the patient from Nimbus staff.
   await prisma.patientBranchRecord.create({ data: { tenantId: ID.nimbus, branchId: ID.indiranagar, patientId: ID.patientRavi, mrn: "IND-00001" } });
@@ -485,3 +539,8 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
+/** Mon–Sat share one set of hours; Sunday is shorter or closed. */
+function weekHours(opensAt: string, closesAt: string, sunday: { opensAt: string; closesAt: string } | null) {
+  return [sunday, ...Array.from({ length: 6 }, () => ({ opensAt, closesAt }))];
+}

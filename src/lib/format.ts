@@ -56,3 +56,9 @@ export function istDayStart(at: Date = new Date(), offsetDays = 0) {
 export function istDayKey(at: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 }
+
+/** "HOME_COLLECTION" → "Home collection". */
+export function sentenceCase(value: string) {
+  const text = value.toLowerCase().replaceAll("_", " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}

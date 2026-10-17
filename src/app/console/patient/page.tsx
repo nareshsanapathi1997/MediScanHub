@@ -41,7 +41,17 @@ async function PatientBody() {
     <>
       <PageHeader eyebrow="My care" title={`Hello, ${actor.name.replace(/^Synth\s+(Patient\s+)?/i, "").split(" ")[0] || actor.name.split(" ")[0]}`} description="Your bookings, reports and bills in one place. Only you can see this page." actions={<Link className={buttonVariants()} href="/centers"><Plus className="size-4" aria-hidden />Book a test</Link>} />
       {awaitingPayment > 0 ? <p role="status" className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">{awaitingPayment} visit{awaitingPayment === 1 ? " is" : "s are"} waiting for payment. Please pay to confirm.</p> : null}
-      <div className="grid gap-3 sm:grid-cols-3">
+      {bookings.rows.length === 0 ? <EmptyState title="No bookings yet" body="Find a center near you, add a test like CBC or thyroid profile, and pick a time." action={<Link className={buttonVariants()} href="/centers">Browse centers</Link>} /> : (
+        <>
+          <Panel title="Upcoming" description={awaitingPayment > 0 ? "Pay for a pending booking to confirm it." : "Your next visits."}>
+            {upcoming.length === 0 ? <p className="text-sm text-muted-foreground">No upcoming visits. Book a test when you need one.</p> : <ul className="divide-y">{upcoming.map(row)}</ul>}
+          </Panel>
+          {past.length > 0 ? <Panel title="Past and cancelled visits"><ul className="divide-y">{past.map(row)}</ul></Panel> : null}
+        </>
+      )}
+      <section aria-labelledby="shortcuts" className="grid gap-3">
+      <h2 id="shortcuts" className="text-sm font-medium text-muted-foreground">Shortcuts</h2>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {[
           { href: "/console/patient/reports", label: "My reports", body: "View and download your reports", icon: FileText },
           { href: "/console/patient/invoices", label: "Bills", body: "Bills and payment status", icon: ReceiptText },
@@ -54,20 +64,13 @@ async function PatientBody() {
           { href: "/console/patient/support", label: "Help", body: "Ask us a question", icon: LifeBuoy },
           { href: "/console/account", label: "Profile and privacy", body: "Your details, download or delete data", icon: UserRound },
         ].map(({ href, label, body, icon: Icon }) => (
-          <Link key={href} href={href} className="surface flex items-center gap-3 p-4 transition hover:border-primary/50">
-            <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="size-5" aria-hidden /></span>
+          <Link key={href} href={href} className="surface flex flex-col items-start gap-2 p-4 transition hover:border-primary/50 sm:flex-row sm:items-center sm:gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="size-5" aria-hidden /></span>
             <span><span className="block font-medium">{label}</span><span className="block text-xs text-muted-foreground">{body}</span></span>
           </Link>
         ))}
       </div>
-      {bookings.rows.length === 0 ? <EmptyState title="No bookings yet" body="Find a center near you, add a test like CBC or thyroid profile, and pick a time." action={<Link className={buttonVariants()} href="/centers">Browse centers</Link>} /> : (
-        <>
-          <Panel title="Upcoming" description="Pay for a pending booking to confirm it.">
-            {upcoming.length === 0 ? <p className="text-sm text-muted-foreground">No upcoming visits. Book a test when you need one.</p> : <ul className="divide-y">{upcoming.map(row)}</ul>}
-          </Panel>
-          {past.length > 0 ? <Panel title="Past and cancelled visits"><ul className="divide-y">{past.map(row)}</ul></Panel> : null}
-        </>
-      )}
+      </section>
     </>
   );
 }

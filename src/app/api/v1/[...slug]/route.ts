@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { DomainError } from "@/lib/errors";
 import { fail, ok, readBody } from "@/server/http";
-import { assertCsrf, assertSameOrigin, clearSessionCookies, currentSession, requestMeta, setSessionCookies } from "@/server/session";
+import { CSRF_COOKIE, clearSessionCookies, currentSession, requestMeta, setSessionCookies } from "@/server/session";
+import { assertCsrfAllowed } from "@/server/csrf";
+import { cookies } from "next/headers";
 import { homeFor, assertPermission } from "@/domain/actor";
 import { createInvitation, login, registerCenter, registerPatient, requestPasswordReset, resetPassword, revokeSession } from "@/lib/services/auth";
 import { createBooking, getBooking, listBookings, readBookingPrescription, rescheduleBooking, transitionBooking } from "@/lib/services/booking";
@@ -31,13 +33,14 @@ import { changePlan, listPlans, refreshSubscriptionStates, subscriptionUsage } f
 import { enqueueBookingReminders, processNotificationQueue } from "@/lib/services/notify";
 import { transitionStudy } from "@/lib/services/imaging";
 import { readFileLink, readReportLink } from "@/lib/adapters/storage";
-import { readReportFile, removeReportFile, signedReportFileLink, signedReportPdfPath, uploadReportFile } from "@/lib/services/report-files";
+import { assertCanUploadReportFile, openReportFile, removeReportFile, signedReportFileLink, signedReportPdfPath, uploadDicomStudy, uploadReportFile } from "@/lib/services/report-files";
+import { DICOM_MAX_BYTES } from "@/lib/dicom";
+import { listScanSlots } from "@/lib/services/scan-rooms";
+import { receiveUpload } from "@/server/upload";
 import { getEnv } from "@/lib/env";
 import type { Actor } from "@/domain/actor";
 import type { BookingStatus, ReportFileKind, ReportStatus, SampleStatus, StudyStatus } from "@prisma/client";
 
-const csrfExempt = new Set(["auth/login", "auth/register", "auth/forgot", "auth/recover", "auth/logout", "payments/webhook", "notifications/process", "centers/register"]);
-const originExempt = new Set(["payments/webhook", "notifications/process"]);
 
 function redirectTo(location: string) {
   return new Response(null, { status: 302, headers: { Location: location, "Cache-Control": "no-store" } });
@@ -147,6 +150,11 @@ async function dispatch(req: Request, slug: string, session: { sessionId: string
     const branchId = z.string().uuid().parse(q.get("branchId"));
     const day = z.string().parse(q.get("day"));
     const kind = z.enum(["CENTER", "HOME", "IMAGING"]).parse(q.get("kind") ?? "CENTER");
+    if (kind === "IMAGING") {
+      // Scan slots belong to a machine type; X-ray, CT, MRI and ultrasound are listed separately.
+      const modality = z.enum(["XR", "CT", "MR", "US"]).parse(q.get("modality"));
+      return ok(await listScanSlots(branchId, day, modality));
+    }
     return ok(await listSlots(branchId, day, kind));
   }
   if (req.method === "GET" && slug === "plans") return ok(await listPlans());
@@ -326,6 +334,22 @@ async function dispatch(req: Request, slug: string, session: { sessionId: string
     });
     return ok({ id: row.id, fileName: row.fileName, sizeBytes: row.sizeBytes }, 201);
   }
+  if (req.method === "PUT" && slug === "uploads/dicom") {
+    // Large DICOM upload: the raw file is the request body. Access is checked before any bytes are read.
+    const user = requireActor(actor);
+    const reportId = z.string().uuid().parse(q.get("reportId"));
+    const bookingItemId = q.get("bookingItemId") ? z.string().uuid().parse(q.get("bookingItemId")) : null;
+    const fileName = (q.get("name") ?? "").trim();
+    if (!fileName) throw new DomainError("UPLOAD", "The file name is missing", 400);
+    await assertCanUploadReportFile(user, reportId);
+    const upload = await receiveUpload(req, DICOM_MAX_BYTES);
+    try {
+      const row = await uploadDicomStudy(user, { reportId, bookingItemId, fileName, filePath: upload.filePath, size: upload.size, checksum: upload.checksum });
+      return ok({ id: row.id, fileName: row.fileName, sizeBytes: row.sizeBytes, contentType: row.contentType, dicom: row.dicomMeta }, 201);
+    } finally {
+      await upload.cleanup();
+    }
+  }
   if (req.method === "DELETE" && slug.match(/^report-files\/[^/]+$/)) {
     await removeReportFile(requireActor(actor), slug.split("/")[1]!);
     return ok({ removed: true });
@@ -334,9 +358,18 @@ async function dispatch(req: Request, slug: string, session: { sessionId: string
     const fileToken = q.get("file");
     if (fileToken) {
       const link = readFileLink(fileToken);
-      const file = await readReportFile(requireActor(actor), link.fileId);
-      return new Response(new Uint8Array(file.bytes), {
-        headers: { "Content-Type": file.contentType, "Content-Disposition": `inline; filename="${file.fileName.replace(/"/g, "")}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
+      const file = await openReportFile(requireActor(actor), link.fileId);
+      // PDFs and images open in the browser; DICOM files and zips always download as the original file.
+      const inline = ["application/pdf", "image/png", "image/jpeg"].includes(file.contentType);
+      const safeName = file.fileName.replace(/[^\w.\- ()]/g, "_");
+      return new Response(file.stream, {
+        headers: {
+          "Content-Type": file.contentType,
+          ...(file.size ? { "Content-Length": String(file.size) } : {}),
+          "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${safeName}"`,
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
       });
     }
     const token = q.get("token");
@@ -408,11 +441,17 @@ async function dispatch(req: Request, slug: string, session: { sessionId: string
 async function entry(req: Request, ctx: { params: Promise<{ slug: string[] }> }) {
   const slug = (await ctx.params).slug.join("/");
   try {
-    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "DELETE") {
-      if (!originExempt.has(slug)) assertSameOrigin(req);
-      if (!csrfExempt.has(slug)) await assertCsrf(req);
-    }
     const session = await currentSession();
+    // Every state-changing API call, DELETE and uploads included, passes the central CSRF check.
+    assertCsrfAllowed({
+      method: req.method,
+      slug,
+      headers: req.headers,
+      requestUrl: req.url,
+      appUrl: getEnv().APP_URL,
+      cookieToken: (await cookies()).get(CSRF_COOKIE)?.value ?? null,
+      sessionToken: session?.csrf ?? null,
+    });
     return await dispatch(req, slug, session);
   } catch (error) {
     return fail(error);
@@ -422,3 +461,5 @@ async function entry(req: Request, ctx: { params: Promise<{ slug: string[] }> })
 export const GET = entry;
 export const POST = entry;
 export const DELETE = entry;
+export const PUT = entry;
+export const PATCH = entry;

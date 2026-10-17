@@ -16,6 +16,8 @@ export type ProfileState = {
   day: string;
   visit: VisitMode;
   kind?: "LAB" | "IMAGING";
+  /** Free-text filter for the services list. */
+  q?: string;
 };
 
 export function splitIds(value?: string) {
@@ -32,6 +34,7 @@ export function profileHref(state: ProfileState, overrides: Partial<ProfileState
   if (next.day) params.set("day", next.day);
   if (next.visit === "HOME_COLLECTION") params.set("visit", next.visit);
   if (next.kind) params.set("kind", next.kind);
+  if (next.q) params.set("q", next.q);
   const query = params.toString();
   return `/centers/${next.slug}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
 }
@@ -53,13 +56,6 @@ export function fullAddress(input: { address: string; city: string; state: strin
   return [input.address, ...[input.city, input.state].filter((part) => !lower.includes(part.toLowerCase()))].join(", ");
 }
 
-export function formatClock(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
-  if (hours === undefined || Number.isNaN(hours)) return value;
-  const suffix = hours >= 12 ? "PM" : "AM";
-  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
-  return `${hour12}:${String(minutes ?? 0).padStart(2, "0")} ${suffix}`;
-}
 
 export function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
@@ -122,3 +118,14 @@ export function bookingTotal(center: CenterProfile, state: ProfileState) {
     packages.reduce((sum, pkg) => sum + pkg.pricePaise, 0);
   return { services, packages, total, count: services.length + packages.length };
 }
+
+/** "+914040001111" → "+91 40 4000 1111"; mobiles become "+91 98480 12345". Anything else is left alone. */
+export function formatPhone(value: string) {
+  const digits = value.replace(/[^\d]/g, "");
+  const local = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits.length === 10 ? digits : null;
+  if (!local) return value;
+  if (/^[6-9]/.test(local)) return `+91 ${local.slice(0, 5)} ${local.slice(5)}`;
+  return `+91 ${local.slice(0, 2)} ${local.slice(2, 6)} ${local.slice(6)}`;
+}
+
+export { formatClock, openStatus, hoursRows, upcomingHolidays } from "@/lib/hours";

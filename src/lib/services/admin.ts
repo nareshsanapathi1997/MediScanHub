@@ -1,4 +1,5 @@
 import { istDayKey, istDayStart } from "@/lib/format";
+import type { Paging } from "@/lib/pagination";
 import type { Prisma, TenantStatus } from "@prisma/client";
 import { prismaPrivileged } from "@/lib/db";
 import { withScope } from "@/lib/scope";
@@ -63,6 +64,28 @@ export async function listTenantsAdmin(actor: Actor, status?: TenantStatus) {
   });
 }
 
+/** One page of centers for review, newest first, plus the total. */
+export async function listTenantsAdminPage(actor: Actor, status: TenantStatus | undefined, paging: Paging) {
+  assertPermission(actor, "tenants.review", null);
+  const where = { ...(status ? { status } : {}), deletedAt: null };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.tenant.findMany({
+      where,
+      include: {
+        branches: { select: { id: true, name: true, city: true } },
+        subscriptions: { include: { plan: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 1 },
+        verifications: { select: { id: true, documentType: true, status: true, fileName: true } },
+        _count: { select: { bookings: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+    prismaPrivileged.tenant.count({ where }),
+  ]);
+  return { items, total };
+}
+
 export async function decideTenant(actor: Actor, tenantId: string, decision: "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE", notes?: string) {
   assertPermission(actor, "tenants.review", null);
   const status: TenantStatus = decision === "APPROVE" || decision === "REACTIVATE" ? "ACTIVE" : decision === "REJECT" ? "REJECTED" : "SUSPENDED";
@@ -117,6 +140,23 @@ export async function listUsersAdmin(actor: Actor, query?: string) {
     orderBy: { createdAt: "desc" },
     take: 100,
   });
+}
+
+/** One page of users for platform admins, with an optional name or email search. */
+export async function listUsersAdminPage(actor: Actor, query: string | undefined, paging: Paging) {
+  assertPermission(actor, "platform.manage", null);
+  const where: Prisma.UserWhereInput = query ? { OR: [{ email: { contains: query, mode: "insensitive" } }, { name: { contains: query, mode: "insensitive" } }] } : {};
+  const [items, total] = await Promise.all([
+    prismaPrivileged.user.findMany({
+      where,
+      select: { ...userPublicSelect, memberships: { select: { role: { select: { key: true, name: true } }, tenant: { select: { name: true } } } } },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      skip: paging.skip,
+      take: paging.take,
+    }),
+    prismaPrivileged.user.count({ where }),
+  ]);
+  return { items, total };
 }
 
 export async function setUserStatus(actor: Actor, userId: string, status: "ACTIVE" | "SUSPENDED" | "DISABLED") {
@@ -175,6 +215,16 @@ export async function createTicket(actor: Actor, input: { subject: string; body:
   });
 }
 
+/** Tickets opened by this user (staff or patient), one page at a time. */
+export async function listOwnTicketsPage(actor: Actor, paging: Paging) {
+  const where = { requesterId: actor.userId };
+  const [items, total] = await Promise.all([
+    prismaPrivileged.supportTicket.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.supportTicket.count({ where }),
+  ]);
+  return { items, total };
+}
+
 export async function createPublicTicket(input: { name: string; email: string; subject: string; body: string; ip?: string }) {
   const inbox = await prismaPrivileged.user.findUnique({ where: { email: "inbox@mediscan.test" } });
   if (!inbox) throw new DomainError("SUPPORT", "Support inbox is not configured", 500);
@@ -199,6 +249,23 @@ export async function listTickets(actor: Actor) {
     orderBy: { createdAt: "desc" },
     take: 50,
   });
+}
+
+/** One page of support questions (all for platform admins, own and own center's otherwise). */
+export async function listTicketsPage(actor: Actor, paging: Paging) {
+  let where: Prisma.SupportTicketWhereInput;
+  if (actor.isSuperAdmin) {
+    assertPermission(actor, "tickets.manage", null);
+    where = {};
+  } else {
+    where = { OR: [{ requesterId: actor.userId }, ...(actor.activeTenantId ? [{ tenantId: actor.activeTenantId }] : [])] };
+  }
+  const [items, total, open] = await Promise.all([
+    prismaPrivileged.supportTicket.findMany({ where, include: ticketInclude, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+    prismaPrivileged.supportTicket.count({ where }),
+    prismaPrivileged.supportTicket.count({ where: { AND: [where, { status: { notIn: ["RESOLVED", "CLOSED"] } }] } }),
+  ]);
+  return { items, total, open };
 }
 
 export async function updateTicket(actor: Actor, id: string, status: "OPEN" | "IN_PROGRESS" | "WAITING" | "RESOLVED" | "CLOSED", resolution?: string) {
@@ -291,6 +358,22 @@ export async function listStaff(actor: Actor) {
       orderBy: { createdAt: "asc" },
     }),
   );
+}
+
+/** One page of active staff, plus the total. */
+export async function listStaffPage(actor: Actor, paging: Paging) {
+  const tenantId = actor.activeTenantId;
+  if (!tenantId) throw new DomainError("TENANT_REQUIRED", "Choose a center first", 400);
+  const allowed = hasPermission(actor, "tenant.read", tenantId) || hasPermission(actor, "bookings.manage", tenantId) || hasPermission(actor, "imaging.perform", tenantId);
+  if (!allowed) throw new DomainError("FORBIDDEN", "You do not have permission to do that", 403);
+  const where: Prisma.TenantMembershipWhereInput = { tenantId, status: "ACTIVE", role: { key: { not: "PATIENT" } } };
+  return withScope({ tenantId, userId: actor.userId }, async (tx) => {
+    const [items, total] = await Promise.all([
+      tx.tenantMembership.findMany({ where, include: { user: { select: userPublicSelect }, role: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], skip: paging.skip, take: paging.take }),
+      tx.tenantMembership.count({ where }),
+    ]);
+    return { items, total };
+  });
 }
 
 function branchFilterFor(actor: Actor, tenantId: string) {

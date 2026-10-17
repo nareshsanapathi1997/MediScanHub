@@ -26,12 +26,15 @@ export function FormBox({
   children,
   success = "Saved.",
   encType,
+  reloadOnSuccess = false,
 }: {
   action: (state: ActionState, form: FormData) => Promise<ActionState>;
   submit: string;
   children: React.ReactNode;
   success?: string;
   encType?: "multipart/form-data";
+  /** Reload after a success instead of revalidating in place (in-place refreshes can stall the prod router). */
+  reloadOnSuccess?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "", idle: true });
   const done = !pending && !state.error && !state.idle && !state.redirectTo;
@@ -40,8 +43,12 @@ export function FormBox({
     if (state.redirectTo) window.location.assign(state.redirectTo);
   }, [state.redirectTo]);
   useEffect(() => {
-    if (done) toast.success(success);
-  }, [done, success]);
+    if (!done) return;
+    toast.success(success);
+    if (!reloadOnSuccess) return;
+    const timer = window.setTimeout(() => window.location.reload(), 1500);
+    return () => window.clearTimeout(timer);
+  }, [done, success, reloadOnSuccess]);
   return (
     <FormBoxStateContext.Provider value={state}>
       <form action={formAction} className="grid gap-3" encType={encType}>

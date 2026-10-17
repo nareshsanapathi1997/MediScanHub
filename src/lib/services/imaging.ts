@@ -13,17 +13,24 @@ function scopeOf(actor: Actor) {
   return { tenantId, userId: actor.userId };
 }
 
-export async function listImaging(actor: Actor) {
+/** One page of scan orders, newest first, plus the total. */
+export async function listImaging(actor: Actor, paging: { skip: number; take: number }) {
   const scope = scopeOf(actor);
   assertPermission(actor, "imaging.read", scope.tenantId);
-  return withScope(scope, (tx) =>
-    tx.imagingOrder.findMany({
-      where: { tenantId: scope.tenantId },
-      include: { studies: { include: { service: true, equipment: true } }, booking: { include: { patient: { include: { user: { select: userPublicSelect } } }, branch: true } }, reports: true },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
-  );
+  const where = { tenantId: scope.tenantId };
+  return withScope(scope, async (tx) => {
+    const [items, total] = await Promise.all([
+      tx.imagingOrder.findMany({
+        where,
+        include: { studies: { include: { service: true, equipment: true } }, booking: { include: { patient: { include: { user: { select: userPublicSelect } } }, branch: true, slot: { include: { equipment: true } } } }, reports: true },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        skip: paging.skip,
+        take: paging.take,
+      }),
+      tx.imagingOrder.count({ where }),
+    ]);
+    return { items, total };
+  });
 }
 
 export async function transitionStudy(actor: Actor, studyId: string, to: StudyStatus) {
@@ -55,37 +62,4 @@ export async function checkInImaging(actor: Actor, orderId: string) {
     assertTransition(IMAGING_TRANSITIONS, order.status, "CHECKED_IN", "Imaging order");
     return tx.imagingOrder.update({ where: { id: order.id }, data: { status: "CHECKED_IN" } });
   });
-}
-
-export async function saveEquipment(actor: Actor, input: { branchId: string; name: string; modality: string; room: string }) {
-  const scope = scopeOf(actor);
-  assertPermission(actor, "imaging.perform", scope.tenantId);
-  return withScope(scope, async (tx) => {
-    const equipment = await tx.equipment.create({ data: { tenantId: scope.tenantId, ...input } });
-    await writeAudit(tx, { tenantId: scope.tenantId, actorId: actor.userId, action: "CREATE", entityType: "Equipment", entityId: equipment.id });
-    return equipment;
-  });
-}
-
-export async function scheduleEquipment(actor: Actor, input: { equipmentId: string; staffUserId?: string; startsAt: Date; endsAt: Date }) {
-  const scope = scopeOf(actor);
-  assertPermission(actor, "imaging.perform", scope.tenantId);
-  if (input.endsAt <= input.startsAt) throw new DomainError("DATE", "Schedule end must be after the start", 400);
-  return withScope(scope, async (tx) => {
-    const equipment = await tx.equipment.findFirst({ where: { id: input.equipmentId, tenantId: scope.tenantId } });
-    if (!equipment) throw new DomainError("NOT_FOUND", "Equipment not found", 404);
-    if (input.staffUserId) {
-      const staff = await tx.user.findFirst({ where: { id: input.staffUserId, memberships: { some: { tenantId: scope.tenantId, status: "ACTIVE" } } } });
-      if (!staff) throw new DomainError("STAFF", "That person is not on this center's staff", 400);
-    }
-    return tx.equipmentSchedule.create({
-      data: { tenantId: scope.tenantId, equipmentId: equipment.id, staffUserId: input.staffUserId, startsAt: input.startsAt, endsAt: input.endsAt },
-    });
-  });
-}
-
-export async function listEquipment(actor: Actor) {
-  const scope = scopeOf(actor);
-  assertPermission(actor, "imaging.read", scope.tenantId);
-  return withScope(scope, (tx) => tx.equipment.findMany({ where: { tenantId: scope.tenantId, active: true }, include: { schedules: { orderBy: { startsAt: "asc" }, take: 8 }, branch: true } }));
 }
